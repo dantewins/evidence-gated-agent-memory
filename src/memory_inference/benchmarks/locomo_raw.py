@@ -16,6 +16,7 @@ from memory_inference.benchmarks.normalized_schema import (
     NormalizedDataset,
     NormalizedRecord,
 )
+from memory_inference.benchmarks.conversational_salience import estimate_confidence, estimate_importance
 from memory_inference.consolidation.revision_types import QueryMode
 from memory_inference.types import BenchmarkBatch, MemoryEntry, Query
 
@@ -115,14 +116,16 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
         if not isinstance(events, list):
             continue
         for event_text in events:
+            event_text_str = str(event_text)
             updates.append(MemoryEntry(
                 entry_id=f"{sample_id}-evt-{ts_counter}",
                 entity=str(speaker),
                 attribute="event",
-                value=str(event_text),
+                value=event_text_str,
                 timestamp=ts_counter,
                 session_id=sample_id,
-                confidence=0.9,
+                confidence=estimate_confidence(event_text_str, speaker=str(speaker), attribute="event"),
+                importance=estimate_importance(event_text_str, speaker=str(speaker), attribute="event"),
                 metadata={"speaker": str(speaker)},
                 provenance="locomo_event_summary",
             ))
@@ -143,6 +146,8 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
             text = str(turn.get("text", ""))
             if not text.strip():
                 continue
+            importance = estimate_importance(text, speaker=speaker, attribute="dialogue")
+            confidence = estimate_confidence(text, speaker=speaker, attribute="dialogue")
             updates.append(MemoryEntry(
                 entry_id=f"{sample_id}-{sess_key}-{turn.get('dia_id', ts_counter)}",
                 entity=speaker,
@@ -150,7 +155,8 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
                 value=text,
                 timestamp=ts_counter,
                 session_id=f"{sample_id}-{sess_key}",
-                confidence=1.0,
+                confidence=confidence,
+                importance=importance,
                 metadata={
                     "source_date": session_date,
                     "session_label": sess_key,

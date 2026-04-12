@@ -149,9 +149,6 @@ def _score_entry(entry: MemoryEntry, query: Query) -> tuple[float, ...]:
 
     return (
         float(lexical_overlap) + entity_bonus + provenance_bonus + attribute_bonus,
-        entry.importance,
-        entry.confidence,
-        float(entry.timestamp),
     )
 
 

@@ -16,6 +16,7 @@ from memory_inference.benchmarks.normalized_schema import (
     NormalizedDataset,
     NormalizedRecord,
 )
+from memory_inference.benchmarks.conversational_salience import estimate_confidence, estimate_importance
 from memory_inference.consolidation.revision_types import QueryMode
 from memory_inference.types import BenchmarkBatch, MemoryEntry, Query
 
@@ -119,6 +120,8 @@ def _convert_record(item: dict, index: int) -> BenchmarkBatch:
             content = str(turn.get("content", ""))
             if not content.strip():
                 continue
+            importance = estimate_importance(content, speaker=str(role), attribute="dialogue")
+            confidence = estimate_confidence(content, speaker=str(role), attribute="dialogue")
             updates.append(MemoryEntry(
                 entry_id=f"{qid}-turn-{turn_counter}",
                 entity=role,
@@ -127,7 +130,8 @@ def _convert_record(item: dict, index: int) -> BenchmarkBatch:
                 timestamp=turn_counter,
                 session_id=qid,
                 scope=scope,
-                confidence=1.0,
+                confidence=confidence,
+                importance=importance,
                 metadata={
                     "source_date": source_date,
                     "session_label": source_session_id,

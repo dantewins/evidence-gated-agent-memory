@@ -70,6 +70,7 @@ class TestLoadRawLongMemEval:
         assert len(batches[0].updates) == 3  # 3 dialogue turns
         assert batches[0].updates[0].entity == "user"
         assert batches[0].updates[0].attribute == "dialogue"
+        assert batches[0].updates[0].importance != batches[0].updates[1].importance
 
     def test_query_mapping(self):
         path = _write_fixture()

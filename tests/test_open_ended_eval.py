@@ -1,5 +1,6 @@
 from memory_inference.consolidation.append_only import AppendOnlyMemoryPolicy
 from memory_inference.consolidation.offline_delta_v2 import OfflineDeltaConsolidationPolicyV2
+from memory_inference.consolidation.recency_salience import RecencySalienceMemoryPolicy
 from memory_inference.llm.prompting import build_reasoning_prompt
 from memory_inference.llm.mock_consolidator import MockConsolidator
 from memory_inference.open_ended_eval import answers_match
@@ -161,3 +162,47 @@ def test_offline_delta_open_ended_retrieval_keeps_earlier_turns_within_scope() -
     )
     retrieved = policy.retrieve_for_query(query)
     assert any("Business Administration" in entry.value for entry in retrieved.entries)
+
+
+def test_recency_salience_can_diverge_from_append_only_on_equal_lexical_match() -> None:
+    entries = [
+        MemoryEntry(
+            entry_id="older",
+            entity="user",
+            attribute="dialogue",
+            value="I graduated with Business Administration in 2022.",
+            timestamp=1,
+            session_id="s",
+            importance=1.7,
+            confidence=0.95,
+        ),
+        MemoryEntry(
+            entry_id="newer",
+            entity="user",
+            attribute="dialogue",
+            value="I graduated with honors.",
+            timestamp=2,
+            session_id="s",
+            importance=0.45,
+            confidence=0.6,
+        ),
+    ]
+    query = Query(
+        query_id="q3",
+        entity="user",
+        attribute="dialogue",
+        question="What did I graduate with?",
+        answer="Business Administration",
+        timestamp=3,
+        session_id="s",
+    )
+    append_only = AppendOnlyMemoryPolicy()
+    recency_salience = RecencySalienceMemoryPolicy()
+    append_only.ingest(entries)
+    recency_salience.ingest(entries)
+
+    append_ids = [entry.entry_id for entry in append_only.retrieve_for_query(query).entries]
+    recency_ids = [entry.entry_id for entry in recency_salience.retrieve_for_query(query).entries]
+
+    assert append_ids[0] == "newer"
+    assert recency_ids[0] == "older"
