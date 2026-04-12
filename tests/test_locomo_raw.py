@@ -30,13 +30,13 @@ FIXTURE = [
             {
                 "question": "Where does Alice work now?",
                 "answer": "Meta",
-                "category": "single-hop",
+                "category": 1,
                 "evidence": ["1-0"],
             },
             {
                 "question": "Where did Alice work before Meta?",
                 "answer": "Google",
-                "category": "temporal",
+                "category": 2,
                 "evidence": ["0-0"],
             },
         ],
@@ -79,12 +79,19 @@ class TestLoadRawLoCoMo:
         assert q0.question == "Where does Alice work now?"
         assert q0.answer == "Meta"
         assert q0.query_mode == QueryMode.CURRENT_STATE
+        assert q0.entity == "Alice"
 
     def test_temporal_category(self):
         path = _write_fixture()
         batches = load_raw_locomo(path)
         q1 = batches[1].queries[0]
         assert q1.query_mode == QueryMode.HISTORY
+
+    def test_dialogue_entries_include_session_date(self):
+        path = _write_fixture()
+        batches = load_raw_locomo(path)
+        dialogues = [u for u in batches[0].updates if u.provenance == "locomo_dialogue"]
+        assert dialogues[0].metadata["source_date"] == "2024-01-10"
 
     def test_limit(self):
         path = _write_fixture()

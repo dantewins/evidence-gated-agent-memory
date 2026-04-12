@@ -86,5 +86,19 @@ def _format_context(context: Sequence[MemoryEntry]) -> str:
     return "\n".join(
         f"- entity={entry.entity}; relation={entry.attribute}; value={entry.value}; "
         f"scope={entry.scope}; timestamp={entry.timestamp}; status={entry.status.name}"
+        f"{_format_metadata(entry)}"
         for entry in context
     )
+
+
+def _format_metadata(entry: MemoryEntry) -> str:
+    if not entry.metadata:
+        return ""
+    visible_items = []
+    for key in ("source_date", "session_label", "session_id", "speaker"):
+        value = entry.metadata.get(key)
+        if value:
+            visible_items.append(f"{key}={value}")
+    if not visible_items:
+        return ""
+    return "; " + "; ".join(visible_items)

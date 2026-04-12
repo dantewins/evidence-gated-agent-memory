@@ -3,7 +3,9 @@ from __future__ import annotations
 from typing import Iterable, List, Tuple
 
 from memory_inference.consolidation.base import BaseMemoryPolicy
+from memory_inference.open_ended_eval import is_open_ended_query, lexical_retrieval
 from memory_inference.types import MemoryEntry, RetrievalResult
+from memory_inference.types import Query
 
 
 class StrongRetrievalMemoryPolicy(BaseMemoryPolicy):
@@ -23,6 +25,11 @@ class StrongRetrievalMemoryPolicy(BaseMemoryPolicy):
             reverse=True,
         )
         return RetrievalResult(entries=ranked[:top_k], debug={"policy": self.name})
+
+    def retrieve_for_query(self, query: Query, top_k: int = 5) -> RetrievalResult:
+        if is_open_ended_query(query):
+            return lexical_retrieval(self.entries, query, top_k=max(top_k, 8), policy_name=self.name)
+        return self.retrieve(query.entity, query.attribute, top_k=top_k)
 
     def snapshot_size(self) -> int:
         return len(self.entries)

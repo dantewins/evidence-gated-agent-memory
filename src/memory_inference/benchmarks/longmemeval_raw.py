@@ -98,24 +98,41 @@ def _convert_record(item: dict, index: int) -> BenchmarkBatch:
     """Convert a single raw LongMemEval record to a BenchmarkBatch."""
     qid = str(item.get("question_id", f"lme-{index}"))
     sessions = item.get("haystack_sessions", [])
+    haystack_dates = item.get("haystack_dates", []) or []
+    haystack_session_ids = item.get("haystack_session_ids", []) or []
     question_type = str(item.get("question_type", ""))
 
     updates: List[MemoryEntry] = []
-    for turn_idx, turn in enumerate(sessions):
-        role = turn.get("role", "unknown")
-        content = str(turn.get("content", ""))
-        if not content.strip():
-            continue
-        updates.append(MemoryEntry(
-            entry_id=f"{qid}-turn-{turn_idx}",
-            entity=role,
-            attribute="dialogue",
-            value=content,
-            timestamp=turn_idx,
-            session_id=qid,
-            confidence=1.0,
-            provenance="longmemeval_raw",
-        ))
+    turn_groups = _coerce_turn_groups(sessions)
+    turn_counter = 0
+    for session_idx, session in enumerate(turn_groups):
+        source_date = str(haystack_dates[session_idx]) if session_idx < len(haystack_dates) else ""
+        source_session_id = (
+            str(haystack_session_ids[session_idx])
+            if session_idx < len(haystack_session_ids)
+            else ""
+        )
+        for turn in session:
+            role = turn.get("role", "unknown")
+            content = str(turn.get("content", ""))
+            if not content.strip():
+                continue
+            updates.append(MemoryEntry(
+                entry_id=f"{qid}-turn-{turn_counter}",
+                entity=role,
+                attribute="dialogue",
+                value=content,
+                timestamp=turn_counter,
+                session_id=qid,
+                confidence=1.0,
+                metadata={
+                    "source_date": source_date,
+                    "session_label": source_session_id,
+                    "speaker": str(role),
+                },
+                provenance=f"longmemeval_raw_s{session_idx}",
+            ))
+            turn_counter += 1
 
     query_mode = _QUESTION_TYPE_TO_MODE.get(question_type, QueryMode.CURRENT_STATE)
     multi_attrs = tuple(item.get("multi_attributes", []) or [])
@@ -134,3 +151,23 @@ def _convert_record(item: dict, index: int) -> BenchmarkBatch:
     )
 
     return BenchmarkBatch(session_id=qid, updates=updates, queries=[query])
+
+
+def _coerce_turn_groups(raw_sessions: object) -> List[List[dict]]:
+    """Accept either a flat turn list or a list of turn lists."""
+    if not isinstance(raw_sessions, list):
+        raise ValueError("haystack_sessions must be a list")
+    if not raw_sessions:
+        return []
+
+    first = raw_sessions[0]
+    if isinstance(first, dict):
+        return [raw_sessions]  # Single flat session.
+    if isinstance(first, list):
+        normalized: List[List[dict]] = []
+        for idx, session in enumerate(raw_sessions):
+            if not isinstance(session, list):
+                raise ValueError(f"haystack_sessions[{idx}] must be a list of turns")
+            normalized.append(session)
+        return normalized
+    raise ValueError("haystack_sessions must contain turn dicts or lists of turn dicts")

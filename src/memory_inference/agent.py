@@ -6,6 +6,7 @@ from typing import Iterable, List, Sequence
 
 from memory_inference.consolidation.base import BaseMemoryPolicy
 from memory_inference.llm.base import BaseReasoner
+from memory_inference.open_ended_eval import answers_match
 from memory_inference.types import BenchmarkBatch, InferenceExample, MemoryEntry, Query
 
 
@@ -30,7 +31,7 @@ class AgentRunner:
                         query=query,
                         retrieved=list(retrieved),
                         prediction=prediction,
-                        correct=(prediction == query.answer),
+                        correct=answers_match(prediction, query.answer),
                         policy_name=self.policy.name,
                         prompt_tokens=trace.prompt_tokens,
                         completion_tokens=trace.completion_tokens,
@@ -52,6 +53,9 @@ class AgentRunner:
         return entries
 
     def _retrieve_for_query(self, query: Query):
+        retrieve_for_query = getattr(self.policy, "retrieve_for_query", None)
+        if callable(retrieve_for_query):
+            return retrieve_for_query(query)
         retrieve_by_mode = getattr(self.policy, "retrieve_by_mode", None)
         if callable(retrieve_by_mode):
             return retrieve_by_mode(query)

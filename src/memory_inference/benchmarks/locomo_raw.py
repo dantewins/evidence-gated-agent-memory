@@ -27,6 +27,9 @@ _CATEGORY_TO_MODE = {
     "temporal": QueryMode.HISTORY,
     "open-ended": QueryMode.CURRENT_STATE,
     "adversarial": QueryMode.CONFLICT_AWARE,
+    "1": QueryMode.CURRENT_STATE,
+    "2": QueryMode.HISTORY,
+    "3": QueryMode.CURRENT_STATE,
 }
 
 
@@ -118,6 +121,7 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
                 timestamp=ts_counter,
                 session_id=sample_id,
                 confidence=0.9,
+                metadata={"speaker": str(speaker)},
                 provenance="locomo_event_summary",
             ))
             ts_counter += 1
@@ -129,6 +133,7 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
     )
     for sess_idx, sess_key in enumerate(session_keys):
         session_data = conversation[sess_key]
+        session_date = str(conversation.get(f"{sess_key}_date_time", ""))
         if not isinstance(session_data, list):
             continue
         for turn in session_data:
@@ -144,6 +149,11 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
                 timestamp=ts_counter,
                 session_id=f"{sample_id}-{sess_key}",
                 confidence=1.0,
+                metadata={
+                    "source_date": session_date,
+                    "session_label": sess_key,
+                    "speaker": speaker,
+                },
                 provenance="locomo_dialogue",
             ))
             ts_counter += 1
@@ -151,11 +161,20 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
     # Build one batch per QA pair (each gets the full update context)
     batches: List[BenchmarkBatch] = []
     for qa_idx, qa in enumerate(qa_list):
-        category = str(qa.get("category", ""))
+        category = _normalize_category(qa.get("category", ""))
         query_mode = _CATEGORY_TO_MODE.get(category, QueryMode.CURRENT_STATE)
+        query_entity = _infer_query_entity(
+            str(qa.get("question", "")),
+            speakers=set(event_summary.keys()) | {
+                str(turn.get("speaker", ""))
+                for sess_key in session_keys
+                for turn in conversation.get(sess_key, [])
+                if isinstance(turn, dict)
+            },
+        )
         query = Query(
             query_id=f"{sample_id}-q{qa_idx}",
-            entity="user",
+            entity=query_entity,
             attribute="dialogue",
             question=str(qa["question"]),
             answer=str(qa["answer"]),
@@ -187,3 +206,19 @@ def _count_sessions(item: dict) -> int:
         1 for k in conv
         if k.startswith("session_") and not k.endswith("_date_time")
     )
+
+
+def _normalize_category(raw_category: object) -> str:
+    return str(raw_category).strip().lower()
+
+
+def _infer_query_entity(question: str, speakers: set[str]) -> str:
+    question_lower = question.lower()
+    matches = [
+        speaker
+        for speaker in speakers
+        if speaker and speaker.lower() in question_lower
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    return "conversation"

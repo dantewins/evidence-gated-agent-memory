@@ -7,6 +7,7 @@ from typing import DefaultDict, Dict, Iterable, List, Optional, Set
 from memory_inference.consolidation.base import BaseMemoryPolicy
 from memory_inference.consolidation.revision_types import MemoryStatus, QueryMode, RevisionOp
 from memory_inference.llm.consolidator_base import BaseConsolidator
+from memory_inference.open_ended_eval import is_open_ended_query, lexical_retrieval
 from memory_inference.types import MemoryEntry, MemoryKey, Query, RetrievalResult
 
 
@@ -202,6 +203,19 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
                 "conflict_count": str(conflict_count),
             },
         )
+
+    def retrieve_for_query(self, query: Query, top_k: int = 5) -> RetrievalResult:
+        if is_open_ended_query(query):
+            candidates: List[MemoryEntry] = list(self.episodic_log)
+            if not candidates:
+                candidates.extend(self._current_entries(query.entity, query.attribute))
+            return lexical_retrieval(
+                candidates,
+                query,
+                top_k=max(top_k, 8),
+                policy_name=self.name,
+            )
+        return self.retrieve_by_mode(query)
 
     def _current_entries(self, entity: str, attribute: str) -> List[MemoryEntry]:
         return [

@@ -96,3 +96,22 @@ class TestPreprocessRawLongMemEval:
         tmp.close()
         batches = load_raw_longmemeval(tmp.name)
         assert len(batches[0].updates) == 0
+
+    def test_nested_sessions_preserve_source_dates(self):
+        fixture = [{
+            "question_id": "q_nested",
+            "question": "When did the user move?",
+            "answer": "2024-01-20",
+            "haystack_dates": ["2024-01-20"],
+            "haystack_session_ids": ["sess_1"],
+            "haystack_sessions": [[
+                {"role": "user", "content": "I moved to Boston yesterday."},
+                {"role": "assistant", "content": "Noted."},
+            ]],
+        }]
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        json.dump(fixture, tmp)
+        tmp.close()
+        batches = load_raw_longmemeval(tmp.name)
+        assert batches[0].updates[0].metadata["source_date"] == "2024-01-20"
+        assert batches[0].updates[0].metadata["session_label"] == "sess_1"
