@@ -123,3 +123,41 @@ def test_offline_delta_open_ended_retrieval_prefers_current_scoped_entries() -> 
     assert retrieved.entries
     assert retrieved.entries[0].scope == "session_2"
     assert "Business Administration" in retrieved.entries[0].value
+
+
+def test_offline_delta_open_ended_retrieval_keeps_earlier_turns_within_scope() -> None:
+    policy = OfflineDeltaConsolidationPolicyV2(consolidator=MockConsolidator())
+    policy.ingest(
+        [
+            MemoryEntry(
+                entry_id="1",
+                entity="user",
+                attribute="dialogue",
+                value="I graduated with Business Administration.",
+                timestamp=0,
+                session_id="s",
+                scope="session_1",
+            ),
+            MemoryEntry(
+                entry_id="2",
+                entity="user",
+                attribute="dialogue",
+                value="Also I like hiking on weekends.",
+                timestamp=1,
+                session_id="s",
+                scope="session_1",
+            ),
+        ]
+    )
+    policy.maybe_consolidate()
+    query = Query(
+        query_id="q2",
+        entity="user",
+        attribute="dialogue",
+        question="What degree did I graduate with?",
+        answer="Business Administration",
+        timestamp=2,
+        session_id="s",
+    )
+    retrieved = policy.retrieve_for_query(query)
+    assert any("Business Administration" in entry.value for entry in retrieved.entries)

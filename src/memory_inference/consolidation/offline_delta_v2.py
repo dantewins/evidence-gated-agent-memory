@@ -210,33 +210,30 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
             return lexical_retrieval(
                 candidates,
                 query,
-                top_k=max(top_k, 8),
+                top_k=max(top_k, 6),
                 policy_name=self.name,
-                secondary_score_fn=self._open_ended_secondary_score,
+                secondary_score_fn=lambda entry: self._open_ended_secondary_score(entry, query),
             )
         return self.retrieve_by_mode(query)
 
     def _open_ended_candidates(self, query: Query) -> List[MemoryEntry]:
-        if query.query_mode == QueryMode.HISTORY:
-            return [entry for entry in self.episodic_log if entry.attribute == query.attribute]
-        if query.query_mode == QueryMode.STATE_WITH_PROVENANCE:
-            return self._current_entries(query.entity, query.attribute) + list(
-                self.archive.get((query.entity, query.attribute), [])
-            )
-        if query.query_mode == QueryMode.CONFLICT_AWARE:
-            return (
-                list(self.conflict_table.get((query.entity, query.attribute), []))
-                + self._current_entries(query.entity, query.attribute)
-            )
-        current = self._current_entries(query.entity, query.attribute)
-        if current:
-            return current
+        scoped_current = self._current_entries(query.entity, query.attribute)
         archived = list(self.archive.get((query.entity, query.attribute), []))
-        if archived:
-            return archived
-        return [entry for entry in self.episodic_log if entry.attribute == query.attribute]
+        conflicts = list(self.conflict_table.get((query.entity, query.attribute), []))
+        episodic = [entry for entry in self.episodic_log if entry.attribute == query.attribute]
 
-    def _open_ended_secondary_score(self, entry: MemoryEntry) -> tuple[float, ...]:
+        pools: List[List[MemoryEntry]] = [scoped_current, archived, conflicts, episodic]
+        combined: List[MemoryEntry] = []
+        seen_ids: Set[str] = set()
+        for pool in pools:
+            for entry in pool:
+                if entry.entry_id in seen_ids:
+                    continue
+                seen_ids.add(entry.entry_id)
+                combined.append(entry)
+        return combined
+
+    def _open_ended_secondary_score(self, entry: MemoryEntry, query: Query) -> tuple[float, ...]:
         status_bonus = {
             MemoryStatus.ACTIVE: 1.0,
             MemoryStatus.REINFORCED: 0.9,
@@ -244,11 +241,17 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
             MemoryStatus.SUPERSEDED: 0.2,
             MemoryStatus.ARCHIVED: 0.1,
         }.get(entry.status, 0.0)
+        if query.query_mode == QueryMode.HISTORY:
+            time_bias = -float(entry.timestamp)
+        else:
+            time_bias = float(entry.timestamp)
+        scope_match = 1.0 if entry.scope != "default" else 0.0
         return (
             status_bonus,
+            scope_match,
             entry.importance,
             entry.confidence,
-            float(entry.timestamp),
+            time_bias,
         )
 
     def _current_entries(self, entity: str, attribute: str) -> List[MemoryEntry]:
