@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Callable, Iterable, List, Sequence
 
 from memory_inference.agent import AgentRunner
@@ -13,6 +14,13 @@ from memory_inference.metrics import ExperimentMetrics, attach_state_metrics, co
 from memory_inference.types import InferenceExample
 
 
+@dataclass(slots=True)
+class ExperimentResult:
+    """Wraps metrics and raw examples for post-hoc analysis (CIs, failure bucketing)."""
+    metrics: ExperimentMetrics
+    examples: List[InferenceExample]
+
+
 def main() -> None:
     scenarios = build_synthetic_batches()
     reasoners = build_reasoners()
@@ -22,8 +30,8 @@ def main() -> None:
     for reasoner in reasoners:
         print(f"Reader: {reasoner.__class__.__name__}")
         for factory in policy_factories:
-            metrics = evaluate_policy(factory, reasoner, scenarios)
-            _print_metrics(metrics)
+            result = evaluate_policy_full(factory, reasoner, scenarios)
+            _print_metrics(result.metrics)
         print()
 
 
@@ -43,6 +51,16 @@ def evaluate_policy(
     reasoner: BaseReasoner,
     scenarios: Sequence[RevisionScenario],
 ) -> ExperimentMetrics:
+    """Evaluate a policy and return metrics only (backward-compatible)."""
+    return evaluate_policy_full(policy_factory, reasoner, scenarios).metrics
+
+
+def evaluate_policy_full(
+    policy_factory: Callable[[], BaseMemoryPolicy],
+    reasoner: BaseReasoner,
+    scenarios: Sequence[RevisionScenario],
+) -> ExperimentResult:
+    """Evaluate a policy and return both metrics and raw examples."""
     examples: List[InferenceExample] = []
     used_policies: List[BaseMemoryPolicy] = []
     snapshot_sizes: List[int] = []
@@ -66,7 +84,8 @@ def evaluate_policy(
         maintenance_tokens=maintenance_tokens,
         maintenance_latency_ms=maintenance_latency_ms,
     )
-    return attach_state_metrics(base, scenarios, used_policies)
+    metrics = attach_state_metrics(base, scenarios, used_policies)
+    return ExperimentResult(metrics=metrics, examples=examples)
 
 
 def _print_metrics(metrics: ExperimentMetrics) -> None:

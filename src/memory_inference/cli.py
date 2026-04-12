@@ -11,6 +11,7 @@ from memory_inference.benchmarks.locomo_adapter import LoCoMoAdapter
 from memory_inference.benchmarks.locomo_preprocess import load_preprocessed_locomo, preprocess_locomo
 from memory_inference.benchmarks.longmemeval_preprocess import load_preprocessed_longmemeval, preprocess_longmemeval
 from memory_inference.experiment_registry import (
+    ablation_policy_factories,
     build_synthetic_batches,
     default_policy_factories,
     load_longmemeval_batches,
@@ -36,6 +37,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     synthetic.add_argument("--cache-dir", default=".cache/memory_inference")
     synthetic.add_argument("--output", default="")
     synthetic.add_argument("--policy", action="append", default=[])
+    synthetic.add_argument("--ablation", action="store_true", help="Run ablation variants of ODV2.")
+    synthetic.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
     _add_local_model_args(synthetic)
 
     preprocess = subparsers.add_parser("preprocess-longmemeval", help="Preprocess LongMemEval-style JSON.")
@@ -45,11 +48,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     longmemeval = subparsers.add_parser("longmemeval", help="Run evaluation on LongMemEval-style JSON.")
     longmemeval.add_argument("--input", required=True)
     longmemeval.add_argument("--preprocessed", action="store_true")
+    longmemeval.add_argument("--input-format", choices=["raw", "normalized"], default="normalized")
     longmemeval.add_argument("--reasoner", choices=["deterministic", "fixed", "local-hf"], default="deterministic")
     longmemeval.add_argument("--model-id", default="")
     longmemeval.add_argument("--cache-dir", default=".cache/memory_inference")
     longmemeval.add_argument("--output", default="")
     longmemeval.add_argument("--policy", action="append", default=[])
+    longmemeval.add_argument("--limit", type=int, default=None, help="Max records to process.")
+    longmemeval.add_argument("--seed", type=int, default=42)
     _add_local_model_args(longmemeval)
 
     preprocess_locomo_parser = subparsers.add_parser("preprocess-locomo", help="Preprocess LoCoMo-style JSON.")
@@ -59,11 +65,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     locomo = subparsers.add_parser("locomo", help="Run evaluation on LoCoMo-style JSON.")
     locomo.add_argument("--input", required=True)
     locomo.add_argument("--preprocessed", action="store_true")
+    locomo.add_argument("--input-format", choices=["raw", "normalized"], default="normalized")
     locomo.add_argument("--reasoner", choices=["deterministic", "fixed", "local-hf"], default="deterministic")
     locomo.add_argument("--model-id", default="")
     locomo.add_argument("--cache-dir", default=".cache/memory_inference")
     locomo.add_argument("--output", default="")
     locomo.add_argument("--policy", action="append", default=[])
+    locomo.add_argument("--limit", type=int, default=None, help="Max records to process.")
+    locomo.add_argument("--seed", type=int, default=42)
     _add_local_model_args(locomo)
 
     args = parser.parse_args(argv)
@@ -92,7 +101,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 def _run_synthetic(args: argparse.Namespace) -> None:
     scenarios = build_synthetic_batches()
     reasoner = _build_reasoner(args)
-    policies = _selected_policy_factories(args.policy)
+    if getattr(args, "ablation", False):
+        policies = ablation_policy_factories()
+    else:
+        policies = _selected_policy_factories(args.policy)
     metrics = [evaluate_policy(factory, reasoner, scenarios) for factory in policies]
     for row in metrics:
         print(
@@ -104,7 +116,7 @@ def _run_synthetic(args: argparse.Namespace) -> None:
         write_manifest(
             args.output,
             build_manifest(
-                benchmark="synthetic_revision",
+                benchmark="synthetic_revision" + ("_ablation" if getattr(args, "ablation", False) else ""),
                 reasoner=reasoner.__class__.__name__,
                 policy_names=[row.policy_name for row in metrics],
                 metrics=[asdict(row) for row in metrics],
@@ -139,11 +151,15 @@ def _build_reasoner(args: argparse.Namespace):
 
 
 def _run_longmemeval(args: argparse.Namespace) -> None:
-    batches = (
-        load_preprocessed_longmemeval(args.input)
-        if args.preprocessed
-        else load_longmemeval_batches(args.input)
-    )
+    input_format = getattr(args, "input_format", "normalized")
+    limit = getattr(args, "limit", None)
+    if args.preprocessed:
+        batches = load_preprocessed_longmemeval(args.input)
+    elif input_format == "raw":
+        from memory_inference.benchmarks.longmemeval_raw import load_raw_longmemeval
+        batches = load_raw_longmemeval(args.input, limit=limit)
+    else:
+        batches = load_longmemeval_batches(args.input)
     reasoner = _build_reasoner(args)
     _run_structured_batches(
         benchmark_name="longmemeval",
@@ -156,13 +172,17 @@ def _run_longmemeval(args: argparse.Namespace) -> None:
 
 
 def _run_locomo(args: argparse.Namespace) -> None:
-    batches = (
-        load_preprocessed_locomo(args.input)
-        if args.preprocessed
-        else LoCoMoAdapter(consolidator=MockConsolidator(), cache_path=None).from_records(
+    input_format = getattr(args, "input_format", "normalized")
+    limit = getattr(args, "limit", None)
+    if args.preprocessed:
+        batches = load_preprocessed_locomo(args.input)
+    elif input_format == "raw":
+        from memory_inference.benchmarks.locomo_raw import load_raw_locomo
+        batches = load_raw_locomo(args.input, limit=limit)
+    else:
+        batches = LoCoMoAdapter(consolidator=MockConsolidator(), cache_path=None).from_records(
             json.loads(Path(args.input).read_text())
         )
-    )
     reasoner = _build_reasoner(args)
     _run_structured_batches(
         benchmark_name="locomo",
