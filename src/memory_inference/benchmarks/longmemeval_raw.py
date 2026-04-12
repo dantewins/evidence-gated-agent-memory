@@ -16,6 +16,10 @@ from memory_inference.benchmarks.normalized_schema import (
     NormalizedDataset,
     NormalizedRecord,
 )
+from memory_inference.benchmarks.conversational_facts import (
+    choose_query_attribute,
+    extract_structured_facts,
+)
 from memory_inference.benchmarks.conversational_salience import estimate_confidence, estimate_importance
 from memory_inference.consolidation.revision_types import QueryMode
 from memory_inference.types import BenchmarkBatch, MemoryEntry, Query
@@ -120,6 +124,7 @@ def _convert_record(item: dict, index: int) -> BenchmarkBatch:
             content = str(turn.get("content", ""))
             if not content.strip():
                 continue
+            source_provenance = f"longmemeval_raw_s{session_idx}"
             importance = estimate_importance(content, speaker=str(role), attribute="dialogue")
             confidence = estimate_confidence(content, speaker=str(role), attribute="dialogue")
             updates.append(MemoryEntry(
@@ -138,19 +143,44 @@ def _convert_record(item: dict, index: int) -> BenchmarkBatch:
                     "speaker": str(role),
                     "has_answer": str(bool(turn.get("has_answer", False))).lower(),
                 },
-                provenance=f"longmemeval_raw_s{session_idx}",
+                provenance=source_provenance,
             ))
+            for fact_idx, fact in enumerate(extract_structured_facts(content)):
+                updates.append(MemoryEntry(
+                    entry_id=f"{qid}-turn-{turn_counter}-fact-{fact_idx}",
+                    entity=str(role),
+                    attribute=fact.attribute,
+                    value=fact.value,
+                    timestamp=turn_counter,
+                    session_id=qid,
+                    scope=scope,
+                    confidence=min(1.0, confidence + 0.08),
+                    importance=min(1.8, importance + 0.15),
+                    metadata={
+                        "source_date": source_date,
+                        "session_label": source_session_id,
+                        "speaker": str(role),
+                        "source_kind": "structured_fact",
+                    },
+                    provenance=f"{source_provenance}_fact",
+                ))
             turn_counter += 1
 
     query_mode = _QUESTION_TYPE_TO_MODE.get(question_type, QueryMode.CURRENT_STATE)
     multi_attrs = tuple(item.get("multi_attributes", []) or [])
     query_entity = _query_entity_for_question_type(question_type)
+    query_attribute = choose_query_attribute(
+        str(item["question"]),
+        query_entity,
+        updates,
+        fallback="dialogue",
+    )
     supports_abstention = qid.endswith("_abs")
 
     query = Query(
         query_id=qid,
         entity=query_entity,
-        attribute="dialogue",
+        attribute=query_attribute,
         question=str(item["question"]),
         answer=str(item["answer"]),
         timestamp=len(sessions),

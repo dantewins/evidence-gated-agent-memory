@@ -2,29 +2,23 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
-import json
 from pathlib import Path
 from typing import Callable, Sequence
 
-from memory_inference.agent import AgentRunner
-from memory_inference.benchmarks.locomo_adapter import LoCoMoAdapter
 from memory_inference.benchmarks.locomo_preprocess import load_preprocessed_locomo, preprocess_locomo
 from memory_inference.benchmarks.longmemeval_preprocess import load_preprocessed_longmemeval, preprocess_longmemeval
 from memory_inference.experiment_registry import (
     ablation_policy_factories,
     build_synthetic_batches,
     default_policy_factories,
-    load_longmemeval_batches,
     policy_factory_by_name,
 )
 from memory_inference.llm.deterministic_reader import DeterministicValidityReader
 from memory_inference.llm.fixed_prompt_reader import FixedPromptReader
 from memory_inference.llm.local_config import LocalModelConfig
 from memory_inference.llm.local_hf_reasoner import LocalHFReasoner
-from memory_inference.llm.mock_consolidator import MockConsolidator
-from memory_inference.metrics import compute_metrics
 from memory_inference.results import build_manifest, write_manifest
-from memory_inference.run_experiment import evaluate_policy
+from memory_inference.run_experiment import evaluate_policy, evaluate_structured_policy_full
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -47,8 +41,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     longmemeval = subparsers.add_parser("longmemeval", help="Run evaluation on LongMemEval-style JSON.")
     longmemeval.add_argument("--input", required=True)
-    longmemeval.add_argument("--preprocessed", action="store_true")
-    longmemeval.add_argument("--input-format", choices=["raw", "normalized"], default="normalized")
+    longmemeval.add_argument("--input-format", choices=["raw", "normalized"], default="raw")
     longmemeval.add_argument("--reasoner", choices=["deterministic", "fixed", "local-hf"], default="deterministic")
     longmemeval.add_argument("--model-id", default="")
     longmemeval.add_argument("--cache-dir", default=".cache/memory_inference")
@@ -64,8 +57,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     locomo = subparsers.add_parser("locomo", help="Run evaluation on LoCoMo-style JSON.")
     locomo.add_argument("--input", required=True)
-    locomo.add_argument("--preprocessed", action="store_true")
-    locomo.add_argument("--input-format", choices=["raw", "normalized"], default="normalized")
+    locomo.add_argument("--input-format", choices=["raw", "normalized"], default="raw")
     locomo.add_argument("--reasoner", choices=["deterministic", "fixed", "local-hf"], default="deterministic")
     locomo.add_argument("--model-id", default="")
     locomo.add_argument("--cache-dir", default=".cache/memory_inference")
@@ -87,11 +79,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         _run_longmemeval(args)
         return
     if args.command == "preprocess-locomo":
-        preprocess_locomo(
-            LoCoMoAdapter(consolidator=MockConsolidator(), cache_path=None),
-            args.input,
-            args.output,
-        )
+        preprocess_locomo(args.input, args.output)
         return
     if args.command == "locomo":
         _run_locomo(args)
@@ -151,15 +139,13 @@ def _build_reasoner(args: argparse.Namespace):
 
 
 def _run_longmemeval(args: argparse.Namespace) -> None:
-    input_format = getattr(args, "input_format", "normalized")
+    input_format = getattr(args, "input_format", "raw")
     limit = getattr(args, "limit", None)
-    if args.preprocessed:
-        batches = load_preprocessed_longmemeval(args.input)
-    elif input_format == "raw":
+    if input_format == "raw":
         from memory_inference.benchmarks.longmemeval_raw import load_raw_longmemeval
         batches = load_raw_longmemeval(args.input, limit=limit)
     else:
-        batches = load_longmemeval_batches(args.input)
+        batches = load_preprocessed_longmemeval(args.input)
     reasoner = _build_reasoner(args)
     _run_structured_batches(
         benchmark_name="longmemeval",
@@ -167,22 +153,18 @@ def _run_longmemeval(args: argparse.Namespace) -> None:
         reasoner=reasoner,
         policy_names=args.policy,
         output=args.output,
-        manifest_config={**_manifest_config(args), "input": args.input, "preprocessed": args.preprocessed},
+        manifest_config={**_manifest_config(args), "input": args.input, "input_format": input_format},
     )
 
 
 def _run_locomo(args: argparse.Namespace) -> None:
-    input_format = getattr(args, "input_format", "normalized")
+    input_format = getattr(args, "input_format", "raw")
     limit = getattr(args, "limit", None)
-    if args.preprocessed:
-        batches = load_preprocessed_locomo(args.input)
-    elif input_format == "raw":
+    if input_format == "raw":
         from memory_inference.benchmarks.locomo_raw import load_raw_locomo
         batches = load_raw_locomo(args.input, limit=limit)
     else:
-        batches = LoCoMoAdapter(consolidator=MockConsolidator(), cache_path=None).from_records(
-            json.loads(Path(args.input).read_text())
-        )
+        batches = load_preprocessed_locomo(args.input)
     reasoner = _build_reasoner(args)
     _run_structured_batches(
         benchmark_name="locomo",
@@ -190,7 +172,7 @@ def _run_locomo(args: argparse.Namespace) -> None:
         reasoner=reasoner,
         policy_names=args.policy,
         output=args.output,
-        manifest_config={**_manifest_config(args), "input": args.input, "preprocessed": args.preprocessed},
+        manifest_config={**_manifest_config(args), "input": args.input, "input_format": input_format},
     )
 
 
@@ -207,16 +189,8 @@ def _run_structured_batches(
     policies = _selected_policy_factories(policy_names)
     metrics = []
     for factory in policies:
-        policy = factory()
-        runner = AgentRunner(policy=policy, reasoner=reasoner)
-        examples = runner.run_batches(batch_list)
-        row = compute_metrics(
-            policy.name,
-            examples,
-            snapshot_sizes=[policy.snapshot_size()],
-            maintenance_tokens=policy.maintenance_tokens,
-            maintenance_latency_ms=policy.maintenance_latency_ms,
-        )
+        result = evaluate_structured_policy_full(factory, reasoner, batch_list)
+        row = result.metrics
         metrics.append(row)
         print(
             f"{row.policy_name}: accuracy={row.accuracy:.3f} "

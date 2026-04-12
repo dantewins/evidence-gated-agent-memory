@@ -11,7 +11,7 @@ from memory_inference.llm.base import BaseReasoner
 from memory_inference.llm.deterministic_reader import DeterministicValidityReader
 from memory_inference.llm.fixed_prompt_reader import FixedPromptReader
 from memory_inference.metrics import ExperimentMetrics, attach_state_metrics, compute_metrics
-from memory_inference.types import InferenceExample
+from memory_inference.types import BenchmarkBatch, InferenceExample
 
 
 @dataclass(slots=True)
@@ -85,6 +85,46 @@ def evaluate_policy_full(
         maintenance_latency_ms=maintenance_latency_ms,
     )
     metrics = attach_state_metrics(base, scenarios, used_policies)
+    return ExperimentResult(metrics=metrics, examples=examples)
+
+
+def evaluate_structured_policy(
+    policy_factory: Callable[[], BaseMemoryPolicy],
+    reasoner: BaseReasoner,
+    batches: Iterable[BenchmarkBatch],
+) -> ExperimentMetrics:
+    """Evaluate independent structured batches with a fresh policy per batch."""
+    return evaluate_structured_policy_full(policy_factory, reasoner, batches).metrics
+
+
+def evaluate_structured_policy_full(
+    policy_factory: Callable[[], BaseMemoryPolicy],
+    reasoner: BaseReasoner,
+    batches: Iterable[BenchmarkBatch],
+) -> ExperimentResult:
+    examples: List[InferenceExample] = []
+    snapshot_sizes: List[int] = []
+    maintenance_tokens = 0
+    maintenance_latency_ms = 0.0
+    policy_name = "unknown"
+
+    for batch in batches:
+        policy = policy_factory()
+        policy_name = policy.name
+        runner = AgentRunner(policy=policy, reasoner=reasoner)
+        batch_examples = runner.run_batches([batch])
+        examples.extend(batch_examples)
+        snapshot_sizes.append(policy.snapshot_size())
+        maintenance_tokens += policy.maintenance_tokens
+        maintenance_latency_ms += policy.maintenance_latency_ms
+
+    metrics = compute_metrics(
+        policy_name,
+        examples,
+        snapshot_sizes=snapshot_sizes,
+        maintenance_tokens=maintenance_tokens,
+        maintenance_latency_ms=maintenance_latency_ms,
+    )
     return ExperimentResult(metrics=metrics, examples=examples)
 
 

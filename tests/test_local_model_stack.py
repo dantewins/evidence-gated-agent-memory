@@ -5,7 +5,6 @@ import pytest
 
 from memory_inference.benchmarks.longmemeval_preprocess import preprocess_longmemeval
 from memory_inference.benchmarks.longmemeval_preprocess import load_preprocessed_longmemeval
-from memory_inference.benchmarks.locomo_adapter import LoCoMoAdapter
 from memory_inference.benchmarks.locomo_preprocess import load_preprocessed_locomo, preprocess_locomo
 from memory_inference.cli import main as cli_main
 from memory_inference.experiment_registry import policy_factory_by_name
@@ -15,7 +14,6 @@ from memory_inference.llm.local_config import LocalModelConfig
 from memory_inference.llm.local_hf_reasoner import LocalHFReasoner
 from memory_inference.llm.prompting import build_reasoning_prompt, render_prompt
 from memory_inference.llm.token_accounting import TokenUsage, count_tokens
-from memory_inference.llm.mock_consolidator import MockConsolidator
 from memory_inference.results import build_manifest
 from memory_inference.types import MemoryEntry, Query
 
@@ -47,6 +45,46 @@ def _context() -> list[MemoryEntry]:
             timestamp=1,
             session_id="s1",
         )
+    ]
+
+
+def _raw_longmemeval_payload() -> list[dict]:
+    return [
+        {
+            "question_id": "q_001",
+            "question_type": "knowledge-update",
+            "question": "What city does the user live in now?",
+            "answer": "Boston",
+            "haystack_sessions": [
+                {"role": "user", "content": "I moved to Boston."},
+            ],
+            "haystack_session_ids": ["sess_1"],
+            "haystack_dates": ["2024-01-20"],
+        }
+    ]
+
+
+def _raw_locomo_payload() -> list[dict]:
+    return [
+        {
+            "sample_id": "sample_001",
+            "conversation": {
+                "session_1": [
+                    {"dia_id": 0, "speaker": "Alice", "text": "I got a new job at Google."},
+                ],
+                "session_1_date_time": "2024-01-10",
+            },
+            "event_summary": {
+                "Alice": ["Got a job at Google"],
+            },
+            "qa": [
+                {
+                    "question": "Where does Alice work now?",
+                    "answer": "Google",
+                    "category": 1,
+                }
+            ],
+        }
     ]
 
 
@@ -171,25 +209,11 @@ def test_local_hf_reasoner_resets_sampling_defaults_for_greedy_generation() -> N
 def test_preprocess_longmemeval_writes_cached_json(tmp_path) -> None:
     source = tmp_path / "source.json"
     output = tmp_path / "processed.json"
-    source.write_text(json.dumps([
-        {
-            "conversation_id": "conv-1",
-            "updates": [
-                {"entity": "user_a", "relation": "home_city", "value": "Boston", "timestamp": 1}
-            ],
-            "query": {
-                "entity": "user_a",
-                "relation": "home_city",
-                "question": "Where does user_a live now?",
-                "answer": "Boston",
-                "timestamp": 2,
-            },
-        }
-    ]))
+    source.write_text(json.dumps(_raw_longmemeval_payload()))
     batches = preprocess_longmemeval(source, output)
     assert len(batches) == 1
     payload = json.loads(output.read_text())
-    assert payload[0]["updates"][0]["attribute"] == "home_city"
+    assert payload["records"][0]["batch"]["queries"][0]["attribute"] == "home_city"
     reloaded = load_preprocessed_longmemeval(output)
     assert reloaded[0].queries[0].answer == "Boston"
 
@@ -197,21 +221,7 @@ def test_preprocess_longmemeval_writes_cached_json(tmp_path) -> None:
 def test_cli_preprocess_longmemeval(tmp_path) -> None:
     source = tmp_path / "source.json"
     output = tmp_path / "processed.json"
-    source.write_text(json.dumps([
-        {
-            "conversation_id": "conv-1",
-            "updates": [
-                {"entity": "user_a", "relation": "home_city", "value": "Boston", "timestamp": 1}
-            ],
-            "query": {
-                "entity": "user_a",
-                "relation": "home_city",
-                "question": "Where does user_a live now?",
-                "answer": "Boston",
-                "timestamp": 2,
-            },
-        }
-    ]))
+    source.write_text(json.dumps(_raw_longmemeval_payload()))
     cli_main(["preprocess-longmemeval", "--input", str(source), "--output", str(output)])
     assert output.exists()
 
@@ -219,51 +229,19 @@ def test_cli_preprocess_longmemeval(tmp_path) -> None:
 def test_preprocess_locomo_writes_cached_json(tmp_path) -> None:
     source = tmp_path / "locomo_source.json"
     output = tmp_path / "locomo_processed.json"
-    source.write_text(json.dumps([
-        {
-            "dialogue_id": "dlg-1",
-            "updates": [
-                {"entity": "user_a", "relation": "favorite_editor", "value": "vim", "timestamp": 5}
-            ],
-            "query": {
-                "entity": "user_a",
-                "relation": "favorite_editor",
-                "question": "What editor does user_a prefer now?",
-                "answer": "vim",
-                "timestamp": 6,
-            },
-        }
-    ]))
-    batches = preprocess_locomo(
-        LoCoMoAdapter(consolidator=MockConsolidator(), cache_path=None),
-        source,
-        output,
-    )
+    source.write_text(json.dumps(_raw_locomo_payload()))
+    batches = preprocess_locomo(source, output)
     assert len(batches) == 1
     payload = json.loads(output.read_text())
-    assert payload[0]["queries"][0]["attribute"] == "favorite_editor"
+    assert payload["records"][0]["batch"]["queries"][0]["attribute"] == "employer"
     reloaded = load_preprocessed_locomo(output)
-    assert reloaded[0].queries[0].answer == "vim"
+    assert reloaded[0].queries[0].answer == "Google"
 
 
 def test_cli_preprocess_locomo(tmp_path) -> None:
     source = tmp_path / "locomo_source.json"
     output = tmp_path / "locomo_processed.json"
-    source.write_text(json.dumps([
-        {
-            "dialogue_id": "dlg-1",
-            "updates": [
-                {"entity": "user_a", "relation": "favorite_editor", "value": "vim", "timestamp": 5}
-            ],
-            "query": {
-                "entity": "user_a",
-                "relation": "favorite_editor",
-                "question": "What editor does user_a prefer now?",
-                "answer": "vim",
-                "timestamp": 6,
-            },
-        }
-    ]))
+    source.write_text(json.dumps(_raw_locomo_payload()))
     cli_main(["preprocess-locomo", "--input", str(source), "--output", str(output)])
     assert output.exists()
 
@@ -280,22 +258,8 @@ def test_cli_synthetic_writes_manifest(tmp_path) -> None:
 def test_cli_longmemeval_writes_manifest(tmp_path) -> None:
     source = tmp_path / "longmemeval.json"
     output = tmp_path / "longmemeval_manifest.json"
-    source.write_text(json.dumps([
-        {
-            "conversation_id": "conv-1",
-            "updates": [
-                {"entity": "user_a", "relation": "home_city", "value": "Boston", "timestamp": 1}
-            ],
-            "query": {
-                "entity": "user_a",
-                "relation": "home_city",
-                "question": "Where does user_a live now?",
-                "answer": "Boston",
-                "timestamp": 2,
-            },
-        }
-    ]))
-    cli_main(["longmemeval", "--input", str(source), "--output", str(output)])
+    source.write_text(json.dumps(_raw_longmemeval_payload()))
+    cli_main(["longmemeval", "--input", str(source), "--input-format", "raw", "--output", str(output)])
     payload = json.loads(output.read_text())
     assert payload["benchmark"] == "longmemeval"
 

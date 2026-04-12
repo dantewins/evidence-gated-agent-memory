@@ -1,8 +1,8 @@
 import json
 
 from memory_inference.agent import AgentRunner
-from memory_inference.benchmarks.longmemeval_adapter import LongMemEvalAdapter
-from memory_inference.benchmarks.locomo_adapter import LoCoMoAdapter
+from memory_inference.benchmarks.longmemeval_preprocess import load_preprocessed_longmemeval, preprocess_longmemeval
+from memory_inference.benchmarks.locomo_preprocess import load_preprocessed_locomo, preprocess_locomo
 from memory_inference.benchmarks.revision_synthetic import RevisionBenchmarkConfig, build_revision_benchmark
 from memory_inference.consolidation.offline_delta_v2 import OfflineDeltaConsolidationPolicyV2
 from memory_inference.consolidation.recency_salience import RecencySalienceMemoryPolicy
@@ -75,62 +75,57 @@ def test_revision_benchmark_includes_long_gap_and_alias_scenarios() -> None:
     assert "S7" in scenario_ids
 
 
-def test_longmemeval_adapter_maps_records(tmp_path) -> None:
+def test_longmemeval_preprocess_round_trips_normalized_schema(tmp_path) -> None:
     path = tmp_path / "longmemeval.json"
+    output = tmp_path / "longmemeval.normalized.json"
     payload = [
         {
-            "conversation_id": "conv-1",
-            "updates": [
-                {
-                    "entity": "user_a",
-                    "relation": "home_city",
-                    "value": "Boston",
-                    "timestamp": 1,
-                }
+            "question_id": "q_001",
+            "question_type": "knowledge-update",
+            "question": "What city does the user live in now?",
+            "answer": "Boston",
+            "haystack_sessions": [
+                {"role": "user", "content": "I moved to Boston."},
             ],
-            "query": {
-                "entity": "user_a",
-                "relation": "home_city",
-                "question": "Where does user_a live now?",
-                "answer": "Boston",
-                "timestamp": 2,
-                "query_mode": "CURRENT_STATE",
-            },
+            "haystack_session_ids": ["sess_1"],
+            "haystack_dates": ["2024-01-20"],
         }
     ]
     path.write_text(json.dumps(payload))
-    adapter = LongMemEvalAdapter()
-    batches = adapter.from_json(path)
+    batches = preprocess_longmemeval(path, output)
+    reloaded = load_preprocessed_longmemeval(output)
     assert len(batches) == 1
-    assert batches[0].updates[0].attribute == "home_city"
-    assert batches[0].queries[0].query_mode == QueryMode.CURRENT_STATE
+    assert reloaded[0].queries[0].attribute == "home_city"
+    assert reloaded[0].queries[0].query_mode == QueryMode.CURRENT_STATE
 
 
-def test_locomo_adapter_round_trips_cache(tmp_path) -> None:
-    cache_path = tmp_path / "locomo_cache.json"
-    adapter = LoCoMoAdapter(consolidator=MockConsolidator(), cache_path=cache_path)
-    records = [
+def test_locomo_preprocess_round_trips_normalized_schema(tmp_path) -> None:
+    path = tmp_path / "locomo.json"
+    output = tmp_path / "locomo.normalized.json"
+    payload = [
         {
-            "dialogue_id": "dlg-1",
-            "updates": [
+            "sample_id": "sample_001",
+            "conversation": {
+                "session_1": [
+                    {"dia_id": 0, "speaker": "Alice", "text": "I got a new job at Google."},
+                ],
+                "session_1_date_time": "2024-01-10",
+            },
+            "event_summary": {
+                "Alice": ["Got a job at Google"],
+            },
+            "qa": [
                 {
-                    "entity": "user_a",
-                    "relation": "favorite_editor",
-                    "value": "vim",
-                    "timestamp": 5,
+                    "question": "Where does Alice work now?",
+                    "answer": "Google",
+                    "category": 1,
                 }
             ],
-            "query": {
-                "entity": "user_a",
-                "relation": "favorite_editor",
-                "question": "What editor does user_a prefer now?",
-                "answer": "vim",
-                "timestamp": 6,
-            },
         }
     ]
-    batches = adapter.from_records(records)
-    cached_batches = adapter.from_cache()
+    path.write_text(json.dumps(payload))
+    batches = preprocess_locomo(path, output)
+    reloaded = load_preprocessed_locomo(output)
     assert len(batches) == 1
-    assert len(cached_batches) == 1
-    assert cached_batches[0].queries[0].answer == "vim"
+    assert reloaded[0].queries[0].attribute == "employer"
+    assert reloaded[0].queries[0].answer == "Google"

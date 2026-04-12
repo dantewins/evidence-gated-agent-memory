@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Iterable, List, Tuple
 
 from memory_inference.consolidation.base import BaseMemoryPolicy
-from memory_inference.open_ended_eval import is_open_ended_query, lexical_retrieval
+from memory_inference.open_ended_eval import (
+    is_open_ended_query,
+    lexical_retrieval,
+    shortlist_open_ended_candidates,
+)
 from memory_inference.types import MemoryEntry, RetrievalResult
 from memory_inference.types import Query
 
@@ -28,8 +32,14 @@ class StrongRetrievalMemoryPolicy(BaseMemoryPolicy):
 
     def retrieve_for_query(self, query: Query, top_k: int = 5) -> RetrievalResult:
         if is_open_ended_query(query):
-            return lexical_retrieval(
+            candidates = shortlist_open_ended_candidates(
                 self.entries,
+                query,
+                score_fn=lambda entry: self._score(entry, query.entity, query.attribute),
+                limit=max(top_k * 16, 64),
+            )
+            return lexical_retrieval(
+                candidates,
                 query,
                 top_k=max(top_k, 8),
                 policy_name=self.name,

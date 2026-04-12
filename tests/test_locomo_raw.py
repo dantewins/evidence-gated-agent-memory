@@ -86,10 +86,11 @@ class TestLoadRawLoCoMo:
     def test_event_summary_entries(self):
         path = _write_fixture()
         batches = load_raw_locomo(path)
-        # Events from Alice (2) + dialogue turns (3) = 5 updates per batch
         events = [u for u in batches[0].updates if u.provenance == "locomo_event_summary"]
         assert len(events) == 2
         assert events[0].entity == "Alice"
+        employers = [u for u in batches[0].updates if u.attribute == "employer"]
+        assert {u.value for u in employers} >= {"Google", "Meta"}
 
     def test_dialogue_entries(self):
         path = _write_fixture()
@@ -105,6 +106,7 @@ class TestLoadRawLoCoMo:
         assert q0.answer == "Meta"
         assert q0.query_mode == QueryMode.CURRENT_STATE
         assert q0.entity == "Alice"
+        assert q0.attribute == "employer"
 
     def test_temporal_category(self):
         path = _write_fixture()
@@ -131,6 +133,8 @@ class TestLoadRawLoCoMo:
         questions = [batch.queries[0].question for batch in batches]
         assert "Would Caroline be likely to own a spaceship?" not in questions
         assert "Where did Caroline move from?" in questions
+        followup = next(batch for batch in batches if batch.queries[0].question == "Where did Caroline move from?")
+        assert followup.queries[0].attribute == "origin"
 
 
 class TestPreprocessRawLoCoMo:

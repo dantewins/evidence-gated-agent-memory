@@ -1,5 +1,6 @@
 from memory_inference.agent import AgentRunner
 from memory_inference.benchmarks.revision_synthetic import RevisionBenchmarkConfig, build_revision_benchmark
+from memory_inference.consolidation.append_only import AppendOnlyMemoryPolicy
 from memory_inference.consolidation.exact_match import ExactMatchMemoryPolicy
 from memory_inference.consolidation.offline_delta_v2 import OfflineDeltaConsolidationPolicyV2
 from memory_inference.consolidation.revision_types import QueryMode
@@ -7,6 +8,8 @@ from memory_inference.consolidation.strong_retrieval import StrongRetrievalMemor
 from memory_inference.llm.deterministic_reader import DeterministicValidityReader
 from memory_inference.llm.mock_consolidator import MockConsolidator
 from memory_inference.metrics import ABSTAIN_TOKEN, attach_state_metrics, compute_metrics
+from memory_inference.run_experiment import evaluate_structured_policy_full
+from memory_inference.types import BenchmarkBatch, MemoryEntry, Query
 
 
 def test_agent_uses_query_mode_aware_retrieval_for_conflicts() -> None:
@@ -69,3 +72,128 @@ def test_metrics_include_maintenance_cost_and_state_scores() -> None:
     assert combined.maintenance_tokens > 0
     assert combined.current_state_exact_match >= 0.0
     assert combined.state_table_edit_distance >= 0.0
+
+
+def test_structured_evaluation_resets_policy_state_per_batch() -> None:
+    batches = [
+        BenchmarkBatch(
+            session_id="batch-1",
+            updates=[
+                MemoryEntry(
+                    entry_id="u1",
+                    entity="user",
+                    attribute="dialogue",
+                    value="I live in Boston.",
+                    timestamp=0,
+                    session_id="batch-1",
+                )
+            ],
+            queries=[
+                Query(
+                    query_id="q1",
+                    entity="user",
+                    attribute="dialogue",
+                    question="Where do I live?",
+                    answer="Boston",
+                    timestamp=1,
+                    session_id="batch-1",
+                )
+            ],
+        ),
+        BenchmarkBatch(
+            session_id="batch-2",
+            updates=[
+                MemoryEntry(
+                    entry_id="u2",
+                    entity="user",
+                    attribute="dialogue",
+                    value="I live in Seattle.",
+                    timestamp=0,
+                    session_id="batch-2",
+                )
+            ],
+            queries=[
+                Query(
+                    query_id="q2",
+                    entity="user",
+                    attribute="dialogue",
+                    question="Where do I live?",
+                    answer="Seattle",
+                    timestamp=1,
+                    session_id="batch-2",
+                )
+            ],
+        ),
+    ]
+
+    result = evaluate_structured_policy_full(
+        AppendOnlyMemoryPolicy,
+        DeterministicValidityReader(),
+        batches,
+    )
+
+    assert result.metrics.accuracy == 1.0
+    assert [example.correct for example in result.examples] == [True, True]
+
+
+def test_structured_evaluation_does_not_double_ingest_repeated_full_context_batches() -> None:
+    updates = [
+        MemoryEntry(
+            entry_id="u1",
+            entity="user",
+            attribute="dialogue",
+            value="I live in Boston.",
+            timestamp=0,
+            session_id="sample-1",
+        ),
+        MemoryEntry(
+            entry_id="u2",
+            entity="user",
+            attribute="dialogue",
+            value="I graduated with Business Administration.",
+            timestamp=1,
+            session_id="sample-1",
+        ),
+    ]
+    batches = [
+        BenchmarkBatch(
+            session_id="sample-1-q1",
+            updates=list(updates),
+            queries=[
+                Query(
+                    query_id="q1",
+                    entity="user",
+                    attribute="dialogue",
+                    question="Where do I live?",
+                    answer="Boston",
+                    timestamp=2,
+                    session_id="sample-1",
+                )
+            ],
+        ),
+        BenchmarkBatch(
+            session_id="sample-1-q2",
+            updates=list(updates),
+            queries=[
+                Query(
+                    query_id="q2",
+                    entity="user",
+                    attribute="dialogue",
+                    question="What degree did I graduate with?",
+                    answer="Business Administration",
+                    timestamp=2,
+                    session_id="sample-1",
+                )
+            ],
+        ),
+    ]
+
+    result = evaluate_structured_policy_full(
+        AppendOnlyMemoryPolicy,
+        DeterministicValidityReader(),
+        batches,
+    )
+
+    assert len(result.examples) == 2
+    assert len(result.examples[0].retrieved) == len(updates)
+    assert len(result.examples[1].retrieved) == len(updates)

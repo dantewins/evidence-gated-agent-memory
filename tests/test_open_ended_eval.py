@@ -206,3 +206,51 @@ def test_recency_salience_can_diverge_from_append_only_on_equal_lexical_match() 
 
     assert append_ids[0] == "newer"
     assert recency_ids[0] == "older"
+
+
+def test_policy_shortlist_keeps_salient_older_open_ended_evidence() -> None:
+    entries = [
+        MemoryEntry(
+            entry_id="target",
+            entity="user",
+            attribute="dialogue",
+            value="I graduated with Business Administration.",
+            timestamp=0,
+            session_id="s",
+            importance=1.8,
+            confidence=0.95,
+        )
+    ]
+    entries.extend(
+        MemoryEntry(
+            entry_id=f"recent-{idx}",
+            entity="user",
+            attribute="dialogue",
+            value=f"I went hiking on weekend {idx}.",
+            timestamp=idx,
+            session_id="s",
+            importance=0.15,
+            confidence=0.25,
+        )
+        for idx in range(1, 71)
+    )
+    query = Query(
+        query_id="q4",
+        entity="user",
+        attribute="dialogue",
+        question="What degree did I graduate with?",
+        answer="Business Administration",
+        timestamp=72,
+        session_id="s",
+    )
+
+    append_only = AppendOnlyMemoryPolicy()
+    recency_salience = RecencySalienceMemoryPolicy()
+    append_only.ingest(entries)
+    recency_salience.ingest(entries)
+
+    append_top = append_only.retrieve_for_query(query).entries[0].value
+    recency_top = recency_salience.retrieve_for_query(query).entries[0].value
+
+    assert "Business Administration" not in append_top
+    assert "Business Administration" in recency_top

@@ -16,6 +16,10 @@ from memory_inference.benchmarks.normalized_schema import (
     NormalizedDataset,
     NormalizedRecord,
 )
+from memory_inference.benchmarks.conversational_facts import (
+    choose_query_attribute,
+    extract_structured_facts,
+)
 from memory_inference.benchmarks.conversational_salience import estimate_confidence, estimate_importance
 from memory_inference.consolidation.revision_types import QueryMode
 from memory_inference.types import BenchmarkBatch, MemoryEntry, Query
@@ -117,6 +121,8 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
             continue
         for event_text in events:
             event_text_str = str(event_text)
+            event_confidence = estimate_confidence(event_text_str, speaker=str(speaker), attribute="event")
+            event_importance = estimate_importance(event_text_str, speaker=str(speaker), attribute="event")
             updates.append(MemoryEntry(
                 entry_id=f"{sample_id}-evt-{ts_counter}",
                 entity=str(speaker),
@@ -124,11 +130,27 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
                 value=event_text_str,
                 timestamp=ts_counter,
                 session_id=sample_id,
-                confidence=estimate_confidence(event_text_str, speaker=str(speaker), attribute="event"),
-                importance=estimate_importance(event_text_str, speaker=str(speaker), attribute="event"),
+                confidence=event_confidence,
+                importance=event_importance,
                 metadata={"speaker": str(speaker)},
                 provenance="locomo_event_summary",
             ))
+            for fact_idx, fact in enumerate(extract_structured_facts(event_text_str)):
+                updates.append(MemoryEntry(
+                    entry_id=f"{sample_id}-evt-{ts_counter}-fact-{fact_idx}",
+                    entity=str(speaker),
+                    attribute=fact.attribute,
+                    value=fact.value,
+                    timestamp=ts_counter,
+                    session_id=sample_id,
+                    confidence=min(1.0, event_confidence + 0.08),
+                    importance=min(1.8, event_importance + 0.15),
+                    metadata={
+                        "speaker": str(speaker),
+                        "source_kind": "structured_fact",
+                    },
+                    provenance="locomo_event_summary_fact",
+                ))
             ts_counter += 1
 
     # Extract from dialogue sessions
@@ -146,6 +168,7 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
             text = str(turn.get("text", ""))
             if not text.strip():
                 continue
+            source_provenance = "locomo_dialogue"
             importance = estimate_importance(text, speaker=speaker, attribute="dialogue")
             confidence = estimate_confidence(text, speaker=speaker, attribute="dialogue")
             updates.append(MemoryEntry(
@@ -163,8 +186,27 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
                     "session_label": sess_key,
                     "speaker": speaker,
                 },
-                provenance="locomo_dialogue",
+                provenance=source_provenance,
             ))
+            for fact_idx, fact in enumerate(extract_structured_facts(text)):
+                updates.append(MemoryEntry(
+                    entry_id=f"{sample_id}-{sess_key}-{turn.get('dia_id', ts_counter)}-fact-{fact_idx}",
+                    entity=speaker,
+                    attribute=fact.attribute,
+                    value=fact.value,
+                    timestamp=ts_counter,
+                    session_id=f"{sample_id}-{sess_key}",
+                    scope=sess_key,
+                    confidence=min(1.0, confidence + 0.08),
+                    importance=min(1.8, importance + 0.15),
+                    metadata={
+                        "source_date": session_date,
+                        "session_label": sess_key,
+                        "speaker": speaker,
+                        "source_kind": "structured_fact",
+                    },
+                    provenance=f"{source_provenance}_fact",
+                ))
             ts_counter += 1
 
     # Build one batch per QA pair (each gets the full update context)
@@ -184,10 +226,16 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
                 if isinstance(turn, dict)
             },
         )
+        query_attribute = choose_query_attribute(
+            str(qa["question"]),
+            query_entity,
+            updates,
+            fallback="dialogue",
+        )
         query = Query(
             query_id=f"{sample_id}-q{qa_idx}",
             entity=query_entity,
-            attribute="dialogue",
+            attribute=query_attribute,
             question=str(qa["question"]),
             answer=str(answer),
             timestamp=ts_counter,

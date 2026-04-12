@@ -7,7 +7,11 @@ from typing import DefaultDict, Dict, Iterable, List, Optional, Set
 from memory_inference.consolidation.base import BaseMemoryPolicy
 from memory_inference.consolidation.revision_types import MemoryStatus, QueryMode, RevisionOp
 from memory_inference.llm.consolidator_base import BaseConsolidator
-from memory_inference.open_ended_eval import is_open_ended_query, lexical_retrieval
+from memory_inference.open_ended_eval import (
+    is_open_ended_query,
+    lexical_retrieval,
+    shortlist_open_ended_candidates,
+)
 from memory_inference.types import MemoryEntry, MemoryKey, Query, RetrievalResult
 
 
@@ -206,7 +210,12 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
 
     def retrieve_for_query(self, query: Query, top_k: int = 5) -> RetrievalResult:
         if is_open_ended_query(query):
-            candidates = self._open_ended_candidates(query)
+            candidates = shortlist_open_ended_candidates(
+                self._open_ended_candidates(query),
+                query,
+                score_fn=lambda entry: self._open_ended_secondary_score(entry, query),
+                limit=max(top_k * 16, 64),
+            )
             return lexical_retrieval(
                 candidates,
                 query,

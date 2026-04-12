@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
-from memory_inference.benchmarks.longmemeval_adapter import LongMemEvalAdapter
 from memory_inference.benchmarks.revision_synthetic import RevisionBenchmarkConfig, build_revision_benchmark
 from memory_inference.consolidation.append_only import AppendOnlyMemoryPolicy
 from memory_inference.consolidation.base import BaseMemoryPolicy
@@ -91,14 +90,10 @@ def default_presets() -> list[ExperimentPreset]:
         ),
         ExperimentPreset(
             name="longmemeval",
-            description="LongMemEval-style structured evaluation using cached local JSON records.",
+            description="LongMemEval evaluation using the canonical raw or normalized benchmark pipeline.",
         ),
     ]
 
 
 def build_synthetic_batches():
     return build_revision_benchmark(RevisionBenchmarkConfig())
-
-
-def load_longmemeval_batches(path: str):
-    return LongMemEvalAdapter().from_json(path)

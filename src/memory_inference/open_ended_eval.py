@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable, Sequence
+from typing import Callable, Iterable, Sequence
 
 from memory_inference.types import MemoryEntry, Query, RetrievalResult
 
@@ -92,6 +92,40 @@ def lexical_retrieval(
     )
 
 
+def shortlist_open_ended_candidates(
+    entries: Iterable[MemoryEntry],
+    query: Query,
+    *,
+    score_fn: Callable[[MemoryEntry], tuple[float, ...] | float],
+    limit: int,
+) -> list[MemoryEntry]:
+    """Apply policy-specific pre-ranking before lexical reranking.
+
+    This keeps open-ended retrieval sensitive to the policy's own notion of
+    salience instead of treating it as a pure tie-break after lexical overlap.
+    """
+    entry_list = list(entries)
+    if query.entity and query.entity not in {"conversation", "all"}:
+        entity_matches = [entry for entry in entry_list if entry.entity == query.entity]
+        if entity_matches:
+            entry_list = entity_matches
+    ranked = sorted(
+        entry_list,
+        key=lambda entry: _coerce_score_key(score_fn(entry)),
+        reverse=True,
+    )
+    unique: list[MemoryEntry] = []
+    seen_ids: set[str] = set()
+    for entry in ranked:
+        if entry.entry_id in seen_ids:
+            continue
+        seen_ids.add(entry.entry_id)
+        unique.append(entry)
+        if len(unique) >= limit:
+            break
+    return unique
+
+
 def lexical_score(entry: MemoryEntry, query: Query) -> tuple[float, ...]:
     return _score_entry(entry, query)
 
@@ -168,3 +202,9 @@ def _content_tokens(text: str) -> set[str]:
         for token in _TOKEN_RE.findall(text.lower())
         if token not in _STOPWORDS and len(token) > 1
     }
+
+
+def _coerce_score_key(score: tuple[float, ...] | float) -> tuple[float, ...]:
+    if isinstance(score, tuple):
+        return score
+    return (float(score),)

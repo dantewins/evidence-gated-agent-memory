@@ -67,10 +67,13 @@ class TestLoadRawLongMemEval:
     def test_updates_from_sessions(self):
         path = _write_fixture()
         batches = load_raw_longmemeval(path)
-        assert len(batches[0].updates) == 3  # 3 dialogue turns
-        assert batches[0].updates[0].entity == "user"
-        assert batches[0].updates[0].attribute == "dialogue"
-        assert batches[0].updates[0].importance != batches[0].updates[1].importance
+        dialogue_updates = [u for u in batches[0].updates if u.attribute == "dialogue"]
+        structured_updates = [u for u in batches[0].updates if u.attribute == "home_city"]
+        assert len(dialogue_updates) == 3
+        assert dialogue_updates[0].entity == "user"
+        assert structured_updates
+        assert {u.value for u in structured_updates} >= {"New York", "Boston"}
+        assert dialogue_updates[0].importance != dialogue_updates[1].importance
 
     def test_query_mapping(self):
         path = _write_fixture()
@@ -79,6 +82,7 @@ class TestLoadRawLongMemEval:
         assert q.question == "What city does the user live in now?"
         assert q.answer == "Boston"
         assert q.query_mode == QueryMode.CURRENT_STATE
+        assert q.attribute == "home_city"
 
     def test_temporal_query_mode(self):
         path = _write_fixture()
@@ -110,7 +114,7 @@ class TestPreprocessRawLongMemEval:
         dataset = preprocess_raw_longmemeval(path)
         assert dataset.total_sessions == 3
         assert dataset.total_queries == 3
-        assert dataset.total_updates == 7  # 3 + 2 + 2 turns
+        assert dataset.total_updates > 7  # dialogue turns plus extracted structured facts
         assert dataset.dropped_records == 0
         assert dataset.source_dataset == "longmemeval"
 
@@ -142,3 +146,20 @@ class TestPreprocessRawLongMemEval:
         assert batches[0].updates[0].metadata["source_date"] == "2024-01-20"
         assert batches[0].updates[0].metadata["session_label"] == "sess_1"
         assert batches[0].updates[0].scope == "sess_1"
+
+    def test_query_falls_back_to_dialogue_for_when_questions(self):
+        fixture = [{
+            "question_id": "q_when",
+            "question": "When did the user move?",
+            "answer": "2024-01-20",
+            "haystack_dates": ["2024-01-20"],
+            "haystack_session_ids": ["sess_1"],
+            "haystack_sessions": [[
+                {"role": "user", "content": "I moved to Boston yesterday."},
+            ]],
+        }]
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+        json.dump(fixture, tmp)
+        tmp.close()
+        batches = load_raw_longmemeval(tmp.name)
+        assert batches[0].queries[0].attribute == "dialogue"
