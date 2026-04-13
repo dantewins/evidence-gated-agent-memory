@@ -138,3 +138,122 @@ def test_state_with_provenance_returns_active_and_superseded() -> None:
     statuses = {e.status for e in result.entries}
     assert MemoryStatus.ACTIVE in statuses or MemoryStatus.REINFORCED in statuses
     assert MemoryStatus.SUPERSEDED in statuses or MemoryStatus.ARCHIVED in statuses
+
+
+def test_hybrid_structured_query_returns_state_and_support_evidence() -> None:
+    p = OfflineDeltaConsolidationPolicyV2(consolidator=MockConsolidator())
+    support = MemoryEntry(
+        entry_id="turn-1",
+        entity="Alice",
+        attribute="dialogue",
+        value="I got a new job at Google.",
+        timestamp=1,
+        session_id="s",
+        scope="session_1",
+    )
+    fact = MemoryEntry(
+        entry_id="fact-1",
+        entity="Alice",
+        attribute="employer",
+        value="Google",
+        timestamp=1,
+        session_id="s",
+        scope="session_1",
+        metadata={
+            "source_kind": "structured_fact",
+            "source_entry_id": "turn-1",
+            "support_text": "I got a new job at Google.",
+            "memory_kind": "state",
+        },
+    )
+    p.ingest([support, fact])
+    p.maybe_consolidate()
+
+    query = Query(
+        query_id="q-structured",
+        entity="Alice",
+        attribute="employer",
+        question="Where does Alice work now?",
+        answer="Google",
+        timestamp=2,
+        session_id="s",
+        query_mode=QueryMode.CURRENT_STATE,
+    )
+    result = p.retrieve_for_query(query)
+
+    assert result.debug["retrieval_mode"] == "hybrid_state_evidence"
+    assert any(entry.attribute == "employer" and entry.value == "Google" for entry in result.entries)
+    assert any(entry.entry_id == "turn-1" for entry in result.entries)
+
+
+def test_hybrid_history_query_surfaces_prior_and_current_values() -> None:
+    p = OfflineDeltaConsolidationPolicyV2(consolidator=MockConsolidator())
+    p.ingest(
+        [
+            MemoryEntry(
+                entry_id="turn-google",
+                entity="Alice",
+                attribute="dialogue",
+                value="I got a new job at Google.",
+                timestamp=1,
+                session_id="s",
+                scope="session_1",
+            ),
+            MemoryEntry(
+                entry_id="fact-google",
+                entity="Alice",
+                attribute="employer",
+                value="Google",
+                timestamp=1,
+                session_id="s",
+                scope="session_1",
+                metadata={
+                    "source_kind": "structured_fact",
+                    "source_entry_id": "turn-google",
+                    "support_text": "I got a new job at Google.",
+                    "memory_kind": "state",
+                },
+            ),
+            MemoryEntry(
+                entry_id="turn-meta",
+                entity="Alice",
+                attribute="dialogue",
+                value="I switched to Meta.",
+                timestamp=2,
+                session_id="s",
+                scope="session_2",
+            ),
+            MemoryEntry(
+                entry_id="fact-meta",
+                entity="Alice",
+                attribute="employer",
+                value="Meta",
+                timestamp=2,
+                session_id="s",
+                scope="session_2",
+                metadata={
+                    "source_kind": "structured_fact",
+                    "source_entry_id": "turn-meta",
+                    "support_text": "I switched to Meta.",
+                    "memory_kind": "state",
+                },
+            ),
+        ]
+    )
+    p.maybe_consolidate()
+
+    query = Query(
+        query_id="q-history",
+        entity="Alice",
+        attribute="employer",
+        question="Where did Alice work before Meta?",
+        answer="Google",
+        timestamp=3,
+        session_id="s",
+        query_mode=QueryMode.HISTORY,
+    )
+    result = p.retrieve_for_query(query)
+    returned_values = {entry.value for entry in result.entries if entry.attribute == "employer"}
+
+    assert "Google" in returned_values
+    assert "Meta" in returned_values

@@ -8,10 +8,10 @@ from memory_inference.consolidation.base import BaseMemoryPolicy
 from memory_inference.consolidation.revision_types import MemoryStatus, QueryMode, RevisionOp
 from memory_inference.llm.consolidator_base import BaseConsolidator
 from memory_inference.open_ended_eval import (
+    expand_with_support_entries,
     has_structured_fact_candidates,
     is_open_ended_query,
     lexical_retrieval,
-    rerank_structured_candidates,
     shortlist_open_ended_candidates,
 )
 from memory_inference.types import MemoryEntry, MemoryKey, Query, RetrievalResult
@@ -228,17 +228,9 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
                 policy_name=self.name,
                 secondary_score_fn=lambda entry: self._open_ended_secondary_score(entry, query),
             )
-        candidates = self._structured_candidates(query)
-        if has_structured_fact_candidates(candidates):
-            return rerank_structured_candidates(
-                candidates,
-                query,
-                top_k=top_k,
-                policy_name=self.name,
-                score_fn=lambda entry: self._structured_secondary_score(entry, query),
-                support_entries=self.episodic_log,
-                shortlist_limit=max(top_k * 12, 48),
-            )
+        hybrid = self._retrieve_hybrid_structured_query(query, top_k=max(top_k, 8))
+        if hybrid is not None:
+            return hybrid
         return self.retrieve_by_mode(query)
 
     def _open_ended_candidates(self, query: Query) -> List[MemoryEntry]:
@@ -288,6 +280,8 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
             MemoryStatus.ARCHIVED: 0.2,
         }.get(entry.status, 0.0)
         entity_bonus = 1.0 if query.entity in {"conversation", "all"} or entry.entity == query.entity else 0.0
+        memory_kind_bonus = 0.4 if self._memory_kind(entry) == "state" else 0.0
+        support_bonus = 0.2 if entry.metadata.get("source_entry_id") else 0.0
         if query.query_mode == QueryMode.HISTORY:
             time_bias = -float(entry.timestamp)
         else:
@@ -295,6 +289,8 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
         return (
             entity_bonus,
             status_bonus,
+            memory_kind_bonus,
+            support_bonus,
             entry.importance,
             entry.confidence,
             time_bias,
@@ -333,12 +329,20 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
                 entry
                 for entry in self.episodic_log
                 if entry.attribute == query.attribute
+                and self._entity_matches(entry.entity, query.entity)
             ]
         else:
             current = self._current_entries(query.entity, query.attribute)
-            archived = list(self.archive.get((query.entity, query.attribute), []))
-            conflicts = list(self.conflict_table.get((query.entity, query.attribute), []))
-            entries = current + archived + conflicts
+            archived = self._archive_entries(query.entity, query.attribute)
+            conflicts = self._conflict_entries(query.entity, query.attribute)
+            episodic_structured = [
+                entry
+                for entry in self.episodic_log
+                if entry.attribute == query.attribute
+                and self._entity_matches(entry.entity, query.entity)
+                and self._is_structured_fact(entry)
+            ]
+            entries = current + archived + conflicts + episodic_structured
 
         combined: List[MemoryEntry] = []
         seen_ids: Set[str] = set()
@@ -348,6 +352,158 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
             seen_ids.add(entry.entry_id)
             combined.append(entry)
         return combined
+
+    def _retrieve_hybrid_structured_query(
+        self,
+        query: Query,
+        *,
+        top_k: int,
+    ) -> RetrievalResult | None:
+        structured_candidates = self._structured_candidates(query)
+        if not has_structured_fact_candidates(structured_candidates):
+            return None
+
+        structured_shortlist = shortlist_open_ended_candidates(
+            structured_candidates,
+            query,
+            score_fn=lambda entry: self._structured_secondary_score(entry, query),
+            limit=max(top_k * 12, 48),
+        )
+        structured_ranked = lexical_retrieval(
+            structured_shortlist,
+            query,
+            top_k=top_k,
+            policy_name=self.name,
+            secondary_score_fn=lambda entry: self._structured_secondary_score(entry, query),
+        )
+
+        evidence_candidates = self._evidence_candidates(query, structured_ranked.entries)
+        evidence_shortlist = shortlist_open_ended_candidates(
+            evidence_candidates,
+            query,
+            score_fn=lambda entry: self._evidence_secondary_score(
+                entry,
+                query,
+                anchor_source_ids=self._anchor_source_ids(structured_ranked.entries),
+            ),
+            limit=max(top_k * 16, 64),
+        )
+        evidence_ranked = lexical_retrieval(
+            evidence_shortlist,
+            query,
+            top_k=max(top_k, 6),
+            policy_name=self.name,
+            secondary_score_fn=lambda entry: self._evidence_secondary_score(
+                entry,
+                query,
+                anchor_source_ids=self._anchor_source_ids(structured_ranked.entries),
+            ),
+        )
+
+        merged = self._merge_hybrid_entries(
+            state_entries=structured_ranked.entries,
+            evidence_entries=evidence_ranked.entries,
+            top_k=top_k,
+        )
+        expanded = expand_with_support_entries(
+            merged,
+            self.episodic_log,
+            support_limit=self.support_history_limit,
+            max_entries=top_k + self.support_history_limit,
+        )
+        return RetrievalResult(
+            entries=expanded,
+            debug={
+                "policy": self.name,
+                "retrieval_mode": "hybrid_state_evidence",
+            },
+        )
+
+    def _evidence_candidates(
+        self,
+        query: Query,
+        structured_entries: Iterable[MemoryEntry],
+    ) -> List[MemoryEntry]:
+        anchor_source_ids = self._anchor_source_ids(structured_entries)
+        candidates: List[MemoryEntry] = []
+        seen_ids: Set[str] = set()
+
+        for entry in self.episodic_log:
+            if entry.entry_id in anchor_source_ids:
+                if entry.entry_id not in seen_ids:
+                    seen_ids.add(entry.entry_id)
+                    candidates.append(entry)
+                continue
+            if not self._entity_matches(entry.entity, query.entity):
+                continue
+            if entry.attribute in {"dialogue", "event", query.attribute}:
+                if entry.entry_id in seen_ids:
+                    continue
+                seen_ids.add(entry.entry_id)
+                candidates.append(entry)
+
+        return candidates
+
+    def _evidence_secondary_score(
+        self,
+        entry: MemoryEntry,
+        query: Query,
+        *,
+        anchor_source_ids: Set[str],
+    ) -> tuple[float, ...]:
+        anchor_bonus = 1.5 if entry.entry_id in anchor_source_ids else 0.0
+        attribute_bonus = 1.0 if entry.attribute == query.attribute else 0.8 if entry.attribute in {"dialogue", "event"} else 0.0
+        if query.query_mode == QueryMode.HISTORY:
+            time_bias = -float(entry.timestamp)
+        else:
+            time_bias = float(entry.timestamp)
+        return (
+            anchor_bonus,
+            attribute_bonus,
+            entry.importance,
+            entry.confidence,
+            time_bias,
+        )
+
+    def _merge_hybrid_entries(
+        self,
+        *,
+        state_entries: Iterable[MemoryEntry],
+        evidence_entries: Iterable[MemoryEntry],
+        top_k: int,
+    ) -> List[MemoryEntry]:
+        merged: List[MemoryEntry] = []
+        seen_ids: Set[str] = set()
+
+        for entry in state_entries:
+            if entry.entry_id in seen_ids:
+                continue
+            seen_ids.add(entry.entry_id)
+            merged.append(entry)
+            if len(merged) >= top_k:
+                return merged
+
+        for entry in evidence_entries:
+            if entry.entry_id in seen_ids:
+                continue
+            seen_ids.add(entry.entry_id)
+            merged.append(entry)
+            if len(merged) >= top_k:
+                break
+        return merged
+
+    def _anchor_source_ids(self, entries: Iterable[MemoryEntry]) -> Set[str]:
+        return {
+            source_entry_id
+            for entry in entries
+            if (source_entry_id := entry.metadata.get("source_entry_id"))
+        }
+
+    def _is_structured_fact(self, entry: MemoryEntry) -> bool:
+        return entry.metadata.get("source_kind") == "structured_fact"
+
+    def _memory_kind(self, entry: MemoryEntry) -> str:
+        return entry.metadata.get("memory_kind", "state")
 
     def snapshot_size(self) -> int:
         return len(self.current_state) + sum(len(v) for v in self.archive.values())

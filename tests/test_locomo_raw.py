@@ -136,7 +136,7 @@ class TestLoadRawLoCoMo:
         followup = next(batch for batch in batches if batch.queries[0].question == "Where did Caroline move from?")
         assert followup.queries[0].attribute == "origin"
 
-    def test_non_temporal_unstructured_locomo_questions_default_to_event(self):
+    def test_non_temporal_unstructured_locomo_questions_default_to_dialogue(self):
         fixture = [
             {
                 "sample_id": "sample_event_fallback",
@@ -163,7 +163,7 @@ class TestLoadRawLoCoMo:
         tmp.close()
         batches = load_raw_locomo(tmp.name)
 
-        assert batches[0].queries[0].attribute == "event"
+        assert batches[0].queries[0].attribute == "dialogue"
 
 
 class TestPreprocessRawLoCoMo:

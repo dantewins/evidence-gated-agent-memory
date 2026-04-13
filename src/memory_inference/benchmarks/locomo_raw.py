@@ -240,12 +240,11 @@ def _convert_sample(item: dict, index: int) -> List[BenchmarkBatch]:
                 if isinstance(turn, dict)
             },
         )
-        fallback_attribute = "dialogue" if query_mode == QueryMode.HISTORY else "event"
         query_attribute = choose_query_attribute(
             str(qa["question"]),
             query_entity,
             updates,
-            fallback=fallback_attribute,
+            fallback="dialogue",
         )
         query = Query(
             query_id=f"{sample_id}-q{qa_idx}",
