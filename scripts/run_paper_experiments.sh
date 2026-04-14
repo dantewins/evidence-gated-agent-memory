@@ -9,13 +9,6 @@ set -euo pipefail
 export PYTHONPATH=src
 export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
 
-python -m memory_inference.cli synthetic \
-  --reasoner local-hf \
-  --model-id Qwen/Qwen2.5-7B-Instruct \
-  --device cuda \
-  --dtype bfloat16 \
-  --output results/synthetic_qwen25_7b_final.json
-
 # Download benchmark inputs if needed:
 #   curl -L https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json -o data/longmemeval_s_cleaned.json
 #   curl -L https://raw.githubusercontent.com/snap-research/locomo/main/data/locomo10.json -o data/locomo10.json
@@ -28,6 +21,8 @@ python -m memory_inference.cli longmemeval \
   --device cuda \
   --dtype bfloat16 \
   --policy strong_retrieval \
+  --policy dense_retrieval \
+  --policy mem0 \
   --policy offline_delta_v2 \
   --policy odv2_hybrid \
   --cache-dir .cache/memory_inference_longmemeval_final \
@@ -41,6 +36,8 @@ python -m memory_inference.cli locomo \
   --device cuda \
   --dtype bfloat16 \
   --policy strong_retrieval \
+  --policy dense_retrieval \
+  --policy mem0 \
   --policy offline_delta_v2 \
   --policy odv2_hybrid \
   --cache-dir .cache/memory_inference_locomo_final \

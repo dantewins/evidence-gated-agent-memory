@@ -8,8 +8,6 @@ from typing import Callable, Sequence
 from memory_inference.benchmarks.locomo_preprocess import load_preprocessed_locomo, preprocess_locomo
 from memory_inference.benchmarks.longmemeval_preprocess import load_preprocessed_longmemeval, preprocess_longmemeval
 from memory_inference.experiment_registry import (
-    ablation_policy_factories,
-    build_synthetic_batches,
     default_policy_factories,
     policy_factory_by_name,
 )
@@ -18,22 +16,12 @@ from memory_inference.llm.fixed_prompt_reader import FixedPromptReader
 from memory_inference.llm.local_config import LocalModelConfig
 from memory_inference.llm.local_hf_reasoner import LocalHFReasoner
 from memory_inference.results import build_manifest, write_manifest
-from memory_inference.run_experiment import evaluate_policy, evaluate_structured_policy_full
+from memory_inference.run_experiment import evaluate_structured_policy_full
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run validity-aware memory experiments.")
     subparsers = parser.add_subparsers(dest="command", required=True)
-
-    synthetic = subparsers.add_parser("synthetic", help="Run the synthetic revision benchmark.")
-    synthetic.add_argument("--reasoner", choices=["deterministic", "fixed", "local-hf"], default="deterministic")
-    synthetic.add_argument("--model-id", default="")
-    synthetic.add_argument("--cache-dir", default=".cache/memory_inference")
-    synthetic.add_argument("--output", default="")
-    synthetic.add_argument("--policy", action="append", default=[])
-    synthetic.add_argument("--ablation", action="store_true", help="Run ablation variants of ODV2.")
-    synthetic.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
-    _add_local_model_args(synthetic)
 
     preprocess = subparsers.add_parser("preprocess-longmemeval", help="Preprocess LongMemEval-style JSON.")
     preprocess.add_argument("--input", required=True)
@@ -69,9 +57,6 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
 
-    if args.command == "synthetic":
-        _run_synthetic(args)
-        return
     if args.command == "preprocess-longmemeval":
         preprocess_longmemeval(args.input, args.output)
         return
@@ -84,33 +69,6 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.command == "locomo":
         _run_locomo(args)
         return
-
-
-def _run_synthetic(args: argparse.Namespace) -> None:
-    scenarios = build_synthetic_batches()
-    reasoner = _build_reasoner(args)
-    if getattr(args, "ablation", False):
-        policies = ablation_policy_factories()
-    else:
-        policies = _selected_policy_factories(args.policy)
-    metrics = [evaluate_policy(factory, reasoner, scenarios) for factory in policies]
-    for row in metrics:
-        print(
-            f"{row.policy_name}: accuracy={row.accuracy:.3f} "
-            f"state_em={row.current_state_exact_match:.3f} "
-            f"amortized_tokens={row.amortized_end_to_end_tokens:.2f}"
-        )
-    if args.output:
-        write_manifest(
-            args.output,
-            build_manifest(
-                benchmark="synthetic_revision" + ("_ablation" if getattr(args, "ablation", False) else ""),
-                reasoner=reasoner.__class__.__name__,
-                policy_names=[row.policy_name for row in metrics],
-                metrics=[asdict(row) for row in metrics],
-                config=_manifest_config(args),
-            ),
-        )
 
 
 def _build_reasoner(args: argparse.Namespace):

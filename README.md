@@ -91,24 +91,12 @@ The intended benefit is not only lower context cost. More importantly, the metho
 
 ## Evaluation design
 
-The evaluation strategy is built around the claim that ordinary long-context QA is not sufficient for this problem. A benchmark that only rewards answer accuracy can conceal whether the memory system actually maintains the correct active state.
+The evaluation path in this repository is focused on real conversational memory benchmarks rather than synthetic state-tracking tasks. The current codebase runs:
 
-For that reason, the project uses a revision-aware benchmark centered on:
+- LongMemEval-style question answering over long conversational histories
+- LoCoMo-style question answering over multi-session conversational histories
 
-- distractor memories
-- standard revision
-- reversion
-- unresolved contradiction
-- scope split
-- long-gap partial update
-- aliasing and low-confidence noise
-
-The benchmark is designed to score both:
-
-1. downstream question answering
-2. state reconstruction accuracy
-
-This distinction is important. A system may answer correctly while maintaining the wrong internal state, or maintain the right state while the reader still fails. The project treats those as different failure modes.
+Those runs are evaluated with downstream task metrics such as QA accuracy, context size, and latency under a frozen reader. The main comparison is therefore between memory policies, not between custom benchmark generators.
 
 ## Repository implementation
 
@@ -117,12 +105,10 @@ This repository serves as the experimental scaffold for that research direction.
 - a typed memory schema with explicit validity-state fields
 - multiple baseline memory policies
 - a validity-aware incremental policy
-- a synthetic revision benchmark with gold state annotations
-- evaluation metrics for both QA and state reconstruction
+- real-benchmark adapters for LongMemEval-style and LoCoMo-style inputs
+- evaluation metrics for QA, context footprint, and latency
 - deterministic readers and a local Hugging Face reasoner path
-- structured adapters for LongMemEval-style and LoCoMo-style inputs
-
-The current codebase is intended to support a progression from controlled synthetic experiments to frozen-model evaluation on more realistic long-memory tasks.
+- dense retrieval and Mem0-style baselines built on the same encoder stack
 
 ## Intended contribution
 

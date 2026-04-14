@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import hashlib
-import math
 import re
-from collections import Counter
-from typing import Iterable, Sequence
+from typing import Any, Protocol, Sequence
 
 from memory_inference.types import MemoryEntry, Query
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
-_VECTOR_DIM = 48
-_HASH_BYTES = 64
+_DEFAULT_DENSE_MODEL_ID = "intfloat/e5-base-v2"
 
 
 def normalize_text(text: str) -> str:
@@ -32,10 +28,11 @@ def query_search_text(query: Query) -> str:
 
 
 def entry_search_text(entry: MemoryEntry) -> str:
+    support_text = entry.metadata.get("support_text", "")
     metadata_parts = [
         f"{key}={value}"
         for key, value in sorted(entry.metadata.items())
-        if value
+        if value and key != "support_text"
     ]
     return " ".join(
         part
@@ -43,6 +40,7 @@ def entry_search_text(entry: MemoryEntry) -> str:
             entry.entity,
             entry.attribute,
             entry.value,
+            support_text,
             entry.provenance,
             " ".join(metadata_parts),
         )
@@ -50,50 +48,141 @@ def entry_search_text(entry: MemoryEntry) -> str:
     )
 
 
-class HashedSemanticEncoder:
-    """Dependency-free dense encoder based on deterministic feature hashing."""
+class DenseEncoder(Protocol):
+    def encode_query(self, text: str) -> tuple[float, ...]:
+        ...
 
-    def __init__(self, dim: int = _VECTOR_DIM) -> None:
-        self.dim = dim
-        self._cache: dict[str, tuple[float, ...]] = {}
+    def encode_passage(self, text: str) -> tuple[float, ...]:
+        ...
 
-    def encode(self, text: str) -> tuple[float, ...]:
-        normalized = normalize_text(text)
-        if normalized in self._cache:
-            return self._cache[normalized]
+    def encode_passages(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
+        ...
 
-        vector = [0.0] * self.dim
-        features = _feature_weights(normalized)
-        for feature, weight in features.items():
-            digest = hashlib.blake2b(feature.encode("utf-8"), digest_size=_HASH_BYTES).digest()
-            for idx in range(self.dim):
-                raw = digest[idx % len(digest)]
-                scale = digest[(idx * 7 + 11) % len(digest)]
-                component = ((raw / 255.0) * 2.0 - 1.0) * (0.5 + scale / 510.0)
-                vector[idx] += weight * component
-
-        norm = math.sqrt(sum(value * value for value in vector))
-        if norm:
-            encoded = tuple(value / norm for value in vector)
-        else:
-            encoded = tuple(0.0 for _ in range(self.dim))
-        self._cache[normalized] = encoded
-        return encoded
-
-    def similarity(self, left: str | Sequence[float], right: str | Sequence[float]) -> float:
-        left_vector = self.encode(left) if isinstance(left, str) else left
-        right_vector = self.encode(right) if isinstance(right, str) else right
-        return sum(left_value * right_value for left_value, right_value in zip(left_vector, right_vector))
+    def similarity(self, left: Sequence[float], right: Sequence[float]) -> float:
+        ...
 
 
-def _feature_weights(text: str) -> Counter[str]:
-    tokens = _TOKEN_RE.findall(text)
-    features: Counter[str] = Counter()
-    for token in tokens:
-        features[f"tok:{token}"] += 1.0
-        if len(token) >= 4:
-            for idx in range(len(token) - 2):
-                features[f"tri:{token[idx:idx + 3]}"] += 0.35
-    for first, second in zip(tokens, tokens[1:]):
-        features[f"bg:{first}_{second}"] += 0.6
-    return features
+class TransformerDenseEncoder:
+    """Standard dense encoder backed by a transformer text embedding model."""
+
+    def __init__(
+        self,
+        model_id: str = _DEFAULT_DENSE_MODEL_ID,
+        *,
+        device: str = "auto",
+        max_length: int = 512,
+        batch_size: int = 16,
+    ) -> None:
+        self.model_id = model_id
+        self.device = device
+        self.max_length = max_length
+        self.batch_size = batch_size
+        self._cache: dict[tuple[str, str], tuple[float, ...]] = {}
+        self._tokenizer: Any = None
+        self._model: Any = None
+        self._torch: Any = None
+        self._device: str | None = None
+
+    def encode_query(self, text: str) -> tuple[float, ...]:
+        return self._encode_texts([self._format_query(text)], mode="query")[0]
+
+    def encode_passage(self, text: str) -> tuple[float, ...]:
+        return self._encode_texts([self._format_passage(text)], mode="passage")[0]
+
+    def encode_passages(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
+        return self._encode_texts([self._format_passage(text) for text in texts], mode="passage")
+
+    def similarity(self, left: Sequence[float], right: Sequence[float]) -> float:
+        return sum(left_value * right_value for left_value, right_value in zip(left, right))
+
+    def _ensure_loaded(self) -> None:
+        if self._model is not None and self._tokenizer is not None and self._torch is not None:
+            return
+        try:
+            import torch
+            from transformers import AutoModel, AutoTokenizer
+        except ImportError as exc:
+            raise ImportError(
+                "TransformerDenseEncoder requires `transformers` and `torch` to be installed."
+            ) from exc
+
+        self._torch = torch
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        if self._tokenizer.pad_token_id is None and self._tokenizer.eos_token_id is not None:
+            self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
+        self._model = AutoModel.from_pretrained(self.model_id)
+        self._device = self._resolve_device(torch)
+        self._model = self._model.to(self._device)
+        self._model.eval()
+
+    def _encode_texts(self, texts: Sequence[str], *, mode: str) -> list[tuple[float, ...]]:
+        self._ensure_loaded()
+        cached: list[tuple[float, ...] | None] = []
+        missing_indices: list[int] = []
+        missing_texts: list[str] = []
+
+        for idx, text in enumerate(texts):
+            cache_key = (mode, text)
+            vector = self._cache.get(cache_key)
+            cached.append(vector)
+            if vector is None:
+                missing_indices.append(idx)
+                missing_texts.append(text)
+
+        if missing_texts:
+            computed = self._encode_missing(missing_texts)
+            for idx, text, vector in zip(missing_indices, missing_texts, computed):
+                self._cache[(mode, text)] = vector
+                cached[idx] = vector
+
+        return [vector for vector in cached if vector is not None]
+
+    def _encode_missing(self, texts: Sequence[str]) -> list[tuple[float, ...]]:
+        assert self._tokenizer is not None
+        assert self._model is not None
+        assert self._torch is not None
+        assert self._device is not None
+
+        outputs: list[tuple[float, ...]] = []
+        for start in range(0, len(texts), self.batch_size):
+            batch = list(texts[start:start + self.batch_size])
+            encoded = self._tokenizer(
+                batch,
+                return_tensors="pt",
+                padding=True,
+                truncation=True,
+                max_length=self.max_length,
+            )
+            encoded = {
+                key: value.to(self._device)
+                for key, value in encoded.items()
+            }
+            with self._torch.no_grad():
+                model_output = self._model(**encoded)
+            hidden_states = getattr(model_output, "last_hidden_state", model_output[0])
+            pooled = self._mean_pool(hidden_states, encoded["attention_mask"])
+            normalized = self._torch.nn.functional.normalize(pooled, p=2, dim=1)
+            outputs.extend(tuple(float(value) for value in row) for row in normalized.cpu().tolist())
+        return outputs
+
+    def _mean_pool(self, hidden_states: Any, attention_mask: Any) -> Any:
+        expanded_mask = attention_mask.unsqueeze(-1).expand(hidden_states.size()).float()
+        weighted_sum = (hidden_states * expanded_mask).sum(dim=1)
+        counts = expanded_mask.sum(dim=1).clamp(min=1e-9)
+        return weighted_sum / counts
+
+    def _resolve_device(self, torch: Any) -> str:
+        if self.device != "auto":
+            return self.device
+        if torch.cuda.is_available():
+            return "cuda"
+        mps = getattr(torch.backends, "mps", None)
+        if mps is not None and mps.is_available():
+            return "mps"
+        return "cpu"
+
+    def _format_query(self, text: str) -> str:
+        return f"query: {text}"
+
+    def _format_passage(self, text: str) -> str:
+        return f"passage: {text}"

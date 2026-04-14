@@ -252,30 +252,37 @@ def test_cli_preprocess_locomo(tmp_path) -> None:
     assert output.exists()
 
 
-def test_cli_synthetic_writes_manifest(tmp_path) -> None:
-    output = tmp_path / "manifest.json"
-    cli_main(["synthetic", "--reasoner", "deterministic", "--output", str(output)])
-    payload = json.loads(output.read_text())
-    assert payload["benchmark"] == "synthetic_revision"
-    assert "metrics" in payload
-    assert "created_at_utc" in payload
-
-
 def test_cli_longmemeval_writes_manifest(tmp_path) -> None:
     source = tmp_path / "longmemeval.json"
     output = tmp_path / "longmemeval_manifest.json"
     source.write_text(json.dumps(_raw_longmemeval_payload()))
-    cli_main(["longmemeval", "--input", str(source), "--input-format", "raw", "--output", str(output)])
+    cli_main([
+        "longmemeval",
+        "--input",
+        str(source),
+        "--input-format",
+        "raw",
+        "--policy",
+        "append_only",
+        "--output",
+        str(output),
+    ])
     payload = json.loads(output.read_text())
     assert payload["benchmark"] == "longmemeval"
+    assert "metrics" in payload
+    assert "created_at_utc" in payload
 
 
-def test_cli_policy_filtering(tmp_path) -> None:
+def test_cli_locomo_policy_filtering(tmp_path) -> None:
+    source = tmp_path / "locomo.json"
     output = tmp_path / "manifest.json"
+    source.write_text(json.dumps(_raw_locomo_payload()))
     cli_main([
-        "synthetic",
-        "--reasoner",
-        "deterministic",
+        "locomo",
+        "--input",
+        str(source),
+        "--input-format",
+        "raw",
         "--policy",
         "offline_delta_v2",
         "--output",
@@ -297,7 +304,7 @@ def test_policy_registry_returns_hybrid_factory() -> None:
 
 def test_build_manifest_adds_timestamp() -> None:
     manifest = build_manifest(
-        benchmark="synthetic_revision",
+        benchmark="longmemeval",
         reasoner="DeterministicValidityReader",
         policy_names=["append_only"],
         metrics=[],

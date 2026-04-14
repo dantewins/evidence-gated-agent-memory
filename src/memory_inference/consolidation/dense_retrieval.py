@@ -3,9 +3,9 @@ from __future__ import annotations
 from typing import Iterable, List
 
 from memory_inference.consolidation.base import BaseMemoryPolicy
-from memory_inference.consolidation.revision_types import QueryMode
 from memory_inference.consolidation.semantic_utils import (
-    HashedSemanticEncoder,
+    DenseEncoder,
+    TransformerDenseEncoder,
     entry_search_text,
     query_search_text,
 )
@@ -16,16 +16,20 @@ from memory_inference.types import MemoryEntry, Query, RetrievalResult
 class DenseRetrievalMemoryPolicy(BaseMemoryPolicy):
     """Semantic retrieval baseline over the full episodic log."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, encoder: DenseEncoder | None = None) -> None:
         super().__init__(name="dense_retrieval")
         self.entries: List[MemoryEntry] = []
-        self.encoder = HashedSemanticEncoder()
+        self.encoder = encoder if encoder is not None else TransformerDenseEncoder()
         self._entry_vectors: dict[str, tuple[float, ...]] = {}
 
     def ingest(self, updates: Iterable[MemoryEntry]) -> None:
-        for update in updates:
-            self.entries.append(update)
-            self._entry_vectors[update.entry_id] = self.encoder.encode(entry_search_text(update))
+        new_entries = list(updates)
+        if not new_entries:
+            return
+        self.entries.extend(new_entries)
+        entry_vectors = self.encoder.encode_passages([entry_search_text(entry) for entry in new_entries])
+        for update, vector in zip(new_entries, entry_vectors):
+            self._entry_vectors[update.entry_id] = vector
 
     def retrieve(self, entity: str, attribute: str, top_k: int = 5) -> RetrievalResult:
         query = Query(
@@ -63,23 +67,10 @@ class DenseRetrievalMemoryPolicy(BaseMemoryPolicy):
         return len(self.entries)
 
     def _candidate_pool(self, query: Query) -> list[MemoryEntry]:
-        entity_matched = [
-            entry
-            for entry in self.entries
-            if self._entity_matches(entry.entity, query.entity)
-        ]
-        base_pool = entity_matched or list(self.entries)
-        if is_open_ended_query(query):
-            return [
-                entry
-                for entry in base_pool
-                if entry.attribute in {query.attribute, "dialogue", "event"}
-            ]
-        same_attribute = [entry for entry in base_pool if entry.attribute == query.attribute]
-        return same_attribute or base_pool
+        return list(self.entries)
 
     def _rank(self, query: Query, candidates: Iterable[MemoryEntry]) -> list[MemoryEntry]:
-        query_vector = self.encoder.encode(query_search_text(query))
+        query_vector = self.encoder.encode_query(query_search_text(query))
         unique: dict[str, MemoryEntry] = {}
         for entry in candidates:
             unique.setdefault(entry.entry_id, entry)
@@ -96,24 +87,13 @@ class DenseRetrievalMemoryPolicy(BaseMemoryPolicy):
         query_vector: tuple[float, ...],
     ) -> tuple[float, ...]:
         dense_similarity = self.encoder.similarity(query_vector, self._entry_vectors[entry.entry_id])
-        entity_bonus = 1.0 if self._entity_matches(entry.entity, query.entity) else 0.0
-        attribute_bonus = 1.0 if entry.attribute == query.attribute else 0.0
-        structured_bonus = 0.25 if entry.metadata.get("source_kind") == "structured_fact" else 0.0
-        scope_bonus = 0.1 if entry.scope != "default" else 0.0
-        if query.query_mode == QueryMode.HISTORY:
-            time_bias = -float(entry.timestamp)
-        else:
-            time_bias = float(entry.timestamp)
+        structured_bonus = 1.0 if entry.metadata.get("source_kind") == "structured_fact" else 0.0
+        time_bias = float(entry.timestamp)
         return (
             dense_similarity,
-            entity_bonus + attribute_bonus + structured_bonus + scope_bonus,
-            entry.importance,
-            entry.confidence,
+            structured_bonus,
             time_bias,
         )
-
-    def _entity_matches(self, entry_entity: str, query_entity: str) -> bool:
-        return query_entity in {"conversation", "all"} or entry_entity == query_entity
 
     def _has_structured_fact(self, entries: Iterable[MemoryEntry]) -> bool:
         return any(entry.metadata.get("source_kind") == "structured_fact" for entry in entries)

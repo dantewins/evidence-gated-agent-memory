@@ -34,13 +34,13 @@ def test_memory_entry_allows_nondefault_validity_fields() -> None:
         status=MemoryStatus.SUPERSEDED,
         scope="travel",
         supersedes_id="e1",
-        provenance="synthetic",
+        provenance="unit-test",
     )
 
     assert entry.status == MemoryStatus.SUPERSEDED
     assert entry.scope == "travel"
     assert entry.supersedes_id == "e1"
-    assert entry.provenance == "synthetic"
+    assert entry.provenance == "unit-test"
 
 
 def test_query_defaults_and_key_reflect_current_schema() -> None:
