@@ -297,9 +297,11 @@ def test_policy_registry_returns_expected_factory() -> None:
     assert policy.name == "offline_delta_v2"
 
 
-def test_policy_registry_returns_hybrid_factory() -> None:
-    policy = policy_factory_by_name("odv2_hybrid")()
-    assert policy.name == "odv2_hybrid"
+def test_policy_registry_returns_hybrid_factories() -> None:
+    strong = policy_factory_by_name("odv2_strong")()
+    dense = policy_factory_by_name("odv2_dense")()
+    assert strong.name == "odv2_strong"
+    assert dense.name == "odv2_dense"
 
 
 def test_build_manifest_adds_timestamp() -> None:

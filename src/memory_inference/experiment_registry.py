@@ -8,7 +8,7 @@ from memory_inference.consolidation.dense_retrieval import DenseRetrievalMemoryP
 from memory_inference.consolidation.exact_match import ExactMatchMemoryPolicy
 from memory_inference.consolidation.mem0 import Mem0MemoryPolicy
 from memory_inference.consolidation.offline_delta_v2 import OfflineDeltaConsolidationPolicyV2
-from memory_inference.consolidation.odv2_hybrid import ODV2HybridMemoryPolicy
+from memory_inference.consolidation.odv2_hybrid import ODV2DenseMemoryPolicy, ODV2StrongMemoryPolicy
 from memory_inference.consolidation.recency_salience import RecencySalienceMemoryPolicy
 from memory_inference.consolidation.strong_retrieval import StrongRetrievalMemoryPolicy
 from memory_inference.consolidation.summary_only import SummaryOnlyMemoryPolicy
@@ -27,7 +27,8 @@ def default_policy_factories() -> list[PolicyFactory]:
         DenseRetrievalMemoryPolicy,
         Mem0MemoryPolicy,
         lambda: OfflineDeltaConsolidationPolicyV2(consolidator=MockConsolidator()),
-        lambda: ODV2HybridMemoryPolicy(consolidator=MockConsolidator()),
+        lambda: ODV2StrongMemoryPolicy(consolidator=MockConsolidator()),
+        lambda: ODV2DenseMemoryPolicy(consolidator=MockConsolidator()),
     ]
 
 
@@ -41,7 +42,8 @@ def policy_factory_by_name(name: str) -> PolicyFactory:
         "dense_retrieval": DenseRetrievalMemoryPolicy,
         "mem0": Mem0MemoryPolicy,
         "offline_delta_v2": lambda: OfflineDeltaConsolidationPolicyV2(consolidator=MockConsolidator()),
-        "odv2_hybrid": lambda: ODV2HybridMemoryPolicy(consolidator=MockConsolidator()),
+        "odv2_strong": lambda: ODV2StrongMemoryPolicy(consolidator=MockConsolidator()),
+        "odv2_dense": lambda: ODV2DenseMemoryPolicy(consolidator=MockConsolidator()),
     }
     if name not in lookup:
         raise KeyError(f"Unknown policy preset: {name}")
