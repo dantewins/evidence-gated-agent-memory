@@ -66,6 +66,8 @@ class DenseEncoder(Protocol):
 class TransformerDenseEncoder:
     """Standard dense encoder backed by a transformer text embedding model."""
 
+    _BACKEND_CACHE: dict[tuple[str, str], tuple[Any, Any, Any]] = {}
+
     def __init__(
         self,
         model_id: str = _DEFAULT_DENSE_MODEL_ID,
@@ -108,6 +110,14 @@ class TransformerDenseEncoder:
                 "TransformerDenseEncoder requires `transformers` and `torch` to be installed."
             ) from exc
 
+        resolved_device = self._resolve_device(torch)
+        cache_key = (self.model_id, resolved_device)
+        cached_backend = self._BACKEND_CACHE.get(cache_key)
+        if cached_backend is not None:
+            self._model, self._tokenizer, self._torch = cached_backend
+            self._device = resolved_device
+            return
+
         self._torch = torch
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         if self._tokenizer.pad_token_id is None and self._tokenizer.eos_token_id is not None:
@@ -130,9 +140,10 @@ class TransformerDenseEncoder:
             self._model = loaded
             loading_info = {}
         self._handle_loading_info(loading_info)
-        self._device = self._resolve_device(torch)
+        self._device = resolved_device
         self._model = self._model.to(self._device)
         self._model.eval()
+        self._BACKEND_CACHE[cache_key] = (self._model, self._tokenizer, self._torch)
 
     def _encode_texts(self, texts: Sequence[str], *, mode: str) -> list[tuple[float, ...]]:
         self._ensure_loaded()

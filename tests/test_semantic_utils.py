@@ -27,6 +27,7 @@ class _DummyModel:
 
 def _install_fake_transformers(monkeypatch, *, loading_info):
     auto_model_calls = []
+    auto_tokenizer_calls = []
     logging_state = {"verbosity": 5}
 
     class _DummyAutoModel:
@@ -34,6 +35,12 @@ def _install_fake_transformers(monkeypatch, *, loading_info):
         def from_pretrained(cls, model_id, **kwargs):
             auto_model_calls.append(kwargs)
             return _DummyModel(), loading_info
+
+    class _TrackingTokenizer(_DummyTokenizer):
+        @classmethod
+        def from_pretrained(cls, model_id):
+            auto_tokenizer_calls.append(model_id)
+            return cls()
 
     fake_torch = types.SimpleNamespace(
         cuda=types.SimpleNamespace(is_available=lambda: False),
@@ -46,18 +53,19 @@ def _install_fake_transformers(monkeypatch, *, loading_info):
     )
     fake_transformers = types.ModuleType("transformers")
     fake_transformers.AutoModel = _DummyAutoModel
-    fake_transformers.AutoTokenizer = _DummyTokenizer
+    fake_transformers.AutoTokenizer = _TrackingTokenizer
     fake_transformers_utils = types.ModuleType("transformers.utils")
     fake_transformers_utils.logging = fake_logging
 
     monkeypatch.setitem(sys.modules, "torch", fake_torch)
     monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
     monkeypatch.setitem(sys.modules, "transformers.utils", fake_transformers_utils)
-    return auto_model_calls, logging_state
+    TransformerDenseEncoder._BACKEND_CACHE.clear()
+    return auto_model_calls, auto_tokenizer_calls, logging_state
 
 
 def test_transformer_dense_encoder_suppresses_position_id_warning(monkeypatch) -> None:
-    auto_model_calls, logging_state = _install_fake_transformers(
+    auto_model_calls, _, logging_state = _install_fake_transformers(
         monkeypatch,
         loading_info={
             "unexpected_keys": ["embeddings.position_ids"],
@@ -109,3 +117,25 @@ def test_transformer_dense_encoder_raises_on_mismatched_weights() -> None:
                 "error_msgs": [],
             }
         )
+
+
+def test_transformer_dense_encoder_reuses_loaded_backend_across_instances(monkeypatch) -> None:
+    auto_model_calls, auto_tokenizer_calls, _ = _install_fake_transformers(
+        monkeypatch,
+        loading_info={
+            "unexpected_keys": ["embeddings.position_ids"],
+            "missing_keys": [],
+            "mismatched_keys": [],
+            "error_msgs": [],
+        },
+    )
+
+    first = TransformerDenseEncoder()
+    second = TransformerDenseEncoder()
+    first._ensure_loaded()
+    second._ensure_loaded()
+
+    assert len(auto_model_calls) == 1
+    assert len(auto_tokenizer_calls) == 1
+    assert first._model is second._model
+    assert first._tokenizer is second._tokenizer
