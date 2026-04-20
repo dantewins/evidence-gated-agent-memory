@@ -8,10 +8,8 @@ from memory_inference.consolidation.base import BaseMemoryPolicy
 from memory_inference.consolidation.revision_types import MemoryStatus, QueryMode, RevisionOp
 from memory_inference.llm.consolidator_base import BaseConsolidator
 from memory_inference.open_ended_eval import (
-    has_structured_fact_candidates,
     is_open_ended_query,
     lexical_retrieval,
-    rerank_structured_candidates,
     shortlist_open_ended_candidates,
 )
 from memory_inference.types import MemoryEntry, MemoryKey, Query, RetrievalResult
@@ -52,7 +50,6 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
         # prior_values_seen: set of values ever seen per MemoryKey, for REVERT detection
         self._prior_values: DefaultDict[MemoryKey, Set[str]] = defaultdict(set)
         self._pending: List[MemoryEntry] = []
-        self._maintenance_ticks = 0
 
     # ------------------------------------------------------------------ #
     # Online path                                                          #
@@ -73,21 +70,12 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
         """Process all pending entries via classify_revision, updating stores."""
         if not self._pending:
             return
-        self._maintenance_ticks += 1
-        if self._maintenance_ticks % self.maintenance_frequency != 0:
-            return
-        pending_count = len(self._pending)
-        before_calls = self.consolidator.total_calls
 
         for entry in self._pending:
             self._process_entry(entry)
 
         self._pending.clear()
         self._apply_importance_threshold()
-        self.maintenance_calls += 1
-        consolidator_calls = self.consolidator.total_calls - before_calls
-        self.maintenance_tokens += max(1, pending_count) * 8 + consolidator_calls * 4
-        self.maintenance_latency_ms += float(pending_count + consolidator_calls)
 
     def _process_entry(self, entry: MemoryEntry) -> None:
         scope_key = (entry.entity, entry.attribute, entry.scope)
@@ -163,18 +151,19 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
         """Default retrieval: current-state entries for this (entity, attribute)."""
         entries = self._current_entries(entity, attribute)
         if not entries:
-            archived = sorted(
-                self._archive_entries(entity, attribute),
-                key=lambda e: e.timestamp, reverse=True,
-            )
-            entries = archived[:top_k]
+            entries = self._archive_entries(entity, attribute)[:top_k]
         return RetrievalResult(
             entries=entries[:top_k],
             debug={
                 "policy": self.name,
-                "conflict_count": str(len(self._conflict_entries(entity, attribute))),
+                "conflict_count": str(len(self.conflict_table.get((entity, attribute), []))),
             },
         )
+
+    def retrieve_for_query(self, query: Query, top_k: int = 5) -> RetrievalResult:
+        if is_open_ended_query(query):
+            return self._retrieve_open_ended(query, top_k=max(top_k, 8))
+        return self.retrieve_by_mode(query)
 
     def retrieve_by_mode(self, query: Query) -> RetrievalResult:
         """Mode-aware retrieval dispatched on query.query_mode."""
@@ -186,24 +175,21 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
 
         elif mode == QueryMode.STATE_WITH_PROVENANCE:
             current = self._current_entries(entity, attribute)
-            archived = self._archive_entries(entity, attribute)
+            archived = self.archive.get((entity, attribute), [])
             entries = current + archived
 
         elif mode == QueryMode.HISTORY:
-            entries = [
-                e for e in self.episodic_log
-                if self._entity_matches(e.entity, entity) and e.attribute == attribute
-            ]
+            entries = [e for e in self.episodic_log if e.entity == entity and e.attribute == attribute]
 
         elif mode == QueryMode.CONFLICT_AWARE:
-            conflicts = self._conflict_entries(entity, attribute)
+            conflicts = self.conflict_table.get((entity, attribute), [])
             current = self._current_entries(entity, attribute)
             entries = conflicts + current
 
         else:
             entries = self._current_entries(entity, attribute)
 
-        conflict_count = len(self._conflict_entries(entity, attribute))
+        conflict_count = len(self.conflict_table.get((entity, attribute), []))
         return RetrievalResult(
             entries=entries,
             debug={
@@ -213,52 +199,106 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
             },
         )
 
-    def retrieve_for_query(self, query: Query, top_k: int = 5) -> RetrievalResult:
-        if is_open_ended_query(query):
-            candidates = shortlist_open_ended_candidates(
-                self._open_ended_candidates(query),
+    def _retrieve_open_ended(self, query: Query, *, top_k: int) -> RetrievalResult:
+        if query.query_mode == QueryMode.HISTORY:
+            candidates = [
+                entry
+                for entry in self.episodic_log
+                if self._entity_matches(entry.entity, query.entity) and entry.attribute == query.attribute
+            ]
+            shortlisted = shortlist_open_ended_candidates(
+                candidates,
                 query,
-                score_fn=lambda entry: self._open_ended_secondary_score(entry, query),
+                score_fn=lambda entry: self._open_ended_candidate_score(entry, query, anchor_scopes=set()),
                 limit=max(top_k * 16, 64),
             )
-            return lexical_retrieval(
-                candidates,
-                query,
-                top_k=max(top_k, 6),
-                policy_name=self.name,
-                secondary_score_fn=lambda entry: self._open_ended_secondary_score(entry, query),
-            )
-        candidates = self._structured_candidates(query)
-        if has_structured_fact_candidates(candidates):
-            return rerank_structured_candidates(
-                candidates,
+            result = lexical_retrieval(
+                shortlisted,
                 query,
                 top_k=top_k,
                 policy_name=self.name,
-                score_fn=lambda entry: self._structured_secondary_score(entry, query),
-                support_entries=self.episodic_log,
-                shortlist_limit=max(top_k * 12, 48),
+                secondary_score_fn=lambda entry: self._open_ended_candidate_score(
+                    entry,
+                    query,
+                    anchor_scopes=set(),
+                ),
             )
-        return self.retrieve_by_mode(query)
+            return RetrievalResult(
+                entries=result.entries,
+                debug={
+                    **result.debug,
+                    "retrieval_mode": "open_ended_history",
+                },
+            )
 
-    def _open_ended_candidates(self, query: Query) -> List[MemoryEntry]:
-        scoped_current = self._current_entries(query.entity, query.attribute)
-        archived = list(self.archive.get((query.entity, query.attribute), []))
-        conflicts = list(self.conflict_table.get((query.entity, query.attribute), []))
-        episodic = [entry for entry in self.episodic_log if entry.attribute == query.attribute]
+        anchor_pool = (
+            self._current_entries(query.entity, query.attribute)
+            or self._archive_entries(query.entity, query.attribute)
+            or self._conflict_entries(query.entity, query.attribute)
+        )
+        if not anchor_pool:
+            anchor_pool = [
+                entry
+                for entry in self.episodic_log
+                if self._entity_matches(entry.entity, query.entity) and entry.attribute == query.attribute
+            ]
 
-        pools: List[List[MemoryEntry]] = [scoped_current, archived, conflicts, episodic]
-        combined: List[MemoryEntry] = []
-        seen_ids: Set[str] = set()
-        for pool in pools:
-            for entry in pool:
-                if entry.entry_id in seen_ids:
-                    continue
-                seen_ids.add(entry.entry_id)
-                combined.append(entry)
-        return combined
+        anchor_shortlist = shortlist_open_ended_candidates(
+            anchor_pool,
+            query,
+            score_fn=lambda entry: self._open_ended_anchor_score(entry, query),
+            limit=max(top_k * 8, 32),
+        )
+        anchor_ranked = lexical_retrieval(
+            anchor_shortlist,
+            query,
+            top_k=max(2, min(top_k, 4)),
+            policy_name=self.name,
+            secondary_score_fn=lambda entry: self._open_ended_anchor_score(entry, query),
+        )
+        anchor_scopes = {
+            entry.scope
+            for entry in anchor_ranked.entries
+            if entry.scope and entry.scope != "default"
+        }
 
-    def _open_ended_secondary_score(self, entry: MemoryEntry, query: Query) -> tuple[float, ...]:
+        candidates = [
+            entry
+            for entry in self.episodic_log
+            if self._entity_matches(entry.entity, query.entity)
+            and entry.attribute == query.attribute
+            and (
+                not anchor_scopes
+                or entry.scope in anchor_scopes
+                or entry.scope == "default"
+            )
+        ]
+        shortlisted = shortlist_open_ended_candidates(
+            candidates,
+            query,
+            score_fn=lambda entry: self._open_ended_candidate_score(entry, query, anchor_scopes=anchor_scopes),
+            limit=max(top_k * 16, 64),
+        )
+        result = lexical_retrieval(
+            shortlisted,
+            query,
+            top_k=top_k,
+            policy_name=self.name,
+            secondary_score_fn=lambda entry: self._open_ended_candidate_score(
+                entry,
+                query,
+                anchor_scopes=anchor_scopes,
+            ),
+        )
+        return RetrievalResult(
+            entries=result.entries,
+            debug={
+                **result.debug,
+                "retrieval_mode": "open_ended_scoped",
+            },
+        )
+
+    def _open_ended_anchor_score(self, entry: MemoryEntry, query: Query) -> tuple[float, ...]:
         status_bonus = {
             MemoryStatus.ACTIVE: 1.0,
             MemoryStatus.REINFORCED: 0.9,
@@ -266,89 +306,62 @@ class OfflineDeltaConsolidationPolicyV2(BaseMemoryPolicy):
             MemoryStatus.SUPERSEDED: 0.2,
             MemoryStatus.ARCHIVED: 0.1,
         }.get(entry.status, 0.0)
-        if query.query_mode == QueryMode.HISTORY:
-            time_bias = -float(entry.timestamp)
-        else:
-            time_bias = float(entry.timestamp)
-        scope_match = 1.0 if entry.scope != "default" else 0.0
+        scope_bonus = 1.0 if entry.scope != "default" else 0.5
+        time_bias = -float(entry.timestamp) if query.query_mode == QueryMode.HISTORY else float(entry.timestamp)
         return (
             status_bonus,
-            scope_match,
             entry.importance,
             entry.confidence,
+            scope_bonus,
             time_bias,
         )
 
-    def _structured_secondary_score(self, entry: MemoryEntry, query: Query) -> tuple[float, ...]:
-        status_bonus = {
-            MemoryStatus.ACTIVE: 1.0,
-            MemoryStatus.REINFORCED: 0.9,
-            MemoryStatus.CONFLICTED: 0.5,
-            MemoryStatus.SUPERSEDED: 0.3,
-            MemoryStatus.ARCHIVED: 0.2,
-        }.get(entry.status, 0.0)
-        entity_bonus = 1.0 if query.entity in {"conversation", "all"} or entry.entity == query.entity else 0.0
-        if query.query_mode == QueryMode.HISTORY:
-            time_bias = -float(entry.timestamp)
-        else:
-            time_bias = float(entry.timestamp)
+    def _open_ended_candidate_score(
+        self,
+        entry: MemoryEntry,
+        query: Query,
+        *,
+        anchor_scopes: Set[str],
+    ) -> tuple[float, ...]:
+        scope_bonus = 1.0 if anchor_scopes and entry.scope in anchor_scopes else 0.0
+        time_bias = -float(entry.timestamp) if query.query_mode == QueryMode.HISTORY else float(entry.timestamp)
         return (
-            entity_bonus,
-            status_bonus,
+            scope_bonus,
             entry.importance,
             entry.confidence,
             time_bias,
         )
 
     def _current_entries(self, entity: str, attribute: str) -> List[MemoryEntry]:
-        return [
+        current = [
             e for (ent, attr, _scope), e in self.current_state.items()
             if self._entity_matches(ent, entity) and attr == attribute
         ]
+        current.sort(key=lambda entry: entry.timestamp, reverse=True)
+        return current
 
     def _archive_entries(self, entity: str, attribute: str) -> List[MemoryEntry]:
-        if entity in {"conversation", "all"}:
-            entries: List[MemoryEntry] = []
-            for (stored_entity, stored_attribute), archived in self.archive.items():
-                if stored_attribute == attribute and self._entity_matches(stored_entity, entity):
-                    entries.extend(archived)
-            return entries
-        return list(self.archive.get((entity, attribute), []))
+        archived = [
+            entry
+            for (ent, attr), entries in self.archive.items()
+            if self._entity_matches(ent, entity) and attr == attribute
+            for entry in entries
+        ]
+        archived.sort(key=lambda entry: entry.timestamp, reverse=True)
+        return archived
 
     def _conflict_entries(self, entity: str, attribute: str) -> List[MemoryEntry]:
-        if entity in {"conversation", "all"}:
-            entries: List[MemoryEntry] = []
-            for (stored_entity, stored_attribute), conflicts in self.conflict_table.items():
-                if stored_attribute == attribute and self._entity_matches(stored_entity, entity):
-                    entries.extend(conflicts)
-            return entries
-        return list(self.conflict_table.get((entity, attribute), []))
+        conflicts = [
+            entry
+            for (ent, attr), entries in self.conflict_table.items()
+            if self._entity_matches(ent, entity) and attr == attribute
+            for entry in entries
+        ]
+        conflicts.sort(key=lambda entry: entry.timestamp, reverse=True)
+        return conflicts
 
     def _entity_matches(self, entry_entity: str, query_entity: str) -> bool:
         return query_entity in {"conversation", "all"} or entry_entity == query_entity
-
-    def _structured_candidates(self, query: Query) -> List[MemoryEntry]:
-        if query.query_mode == QueryMode.HISTORY:
-            entries = [
-                entry
-                for entry in self.episodic_log
-                if entry.attribute == query.attribute
-                and self._entity_matches(entry.entity, query.entity)
-            ]
-        else:
-            current = self._current_entries(query.entity, query.attribute)
-            archived = self._archive_entries(query.entity, query.attribute)
-            conflicts = self._conflict_entries(query.entity, query.attribute)
-            entries = current + archived + conflicts
-
-        combined: List[MemoryEntry] = []
-        seen_ids: Set[str] = set()
-        for entry in entries:
-            if entry.entry_id in seen_ids:
-                continue
-            seen_ids.add(entry.entry_id)
-            combined.append(entry)
-        return combined
 
     def snapshot_size(self) -> int:
         return len(self.current_state) + sum(len(v) for v in self.archive.values())
