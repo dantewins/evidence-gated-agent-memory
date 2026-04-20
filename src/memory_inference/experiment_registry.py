@@ -11,7 +11,6 @@ from memory_inference.consolidation.mem0_variants import (
     Mem0AllFeaturesPolicy,
     Mem0ArchiveConflictPolicy,
     Mem0HistoryAwarePolicy,
-    Mem0SupportLinksPolicy,
 )
 from memory_inference.consolidation.offline_delta_v2 import OfflineDeltaConsolidationPolicyV2
 from memory_inference.consolidation.odv2_hybrid import ODV2DenseMemoryPolicy, ODV2StrongMemoryPolicy
@@ -32,7 +31,6 @@ def default_policy_factories() -> list[PolicyFactory]:
         StrongRetrievalMemoryPolicy,
         DenseRetrievalMemoryPolicy,
         Mem0MemoryPolicy,
-        Mem0SupportLinksPolicy,
         Mem0ArchiveConflictPolicy,
         Mem0HistoryAwarePolicy,
         Mem0AllFeaturesPolicy,
@@ -51,7 +49,6 @@ def policy_factory_by_name(name: str) -> PolicyFactory:
         "strong_retrieval": StrongRetrievalMemoryPolicy,
         "dense_retrieval": DenseRetrievalMemoryPolicy,
         "mem0": Mem0MemoryPolicy,
-        "mem0_support_links": Mem0SupportLinksPolicy,
         "mem0_archive_conflict": Mem0ArchiveConflictPolicy,
         "mem0_history_aware": Mem0HistoryAwarePolicy,
         "mem0_all_features": Mem0AllFeaturesPolicy,

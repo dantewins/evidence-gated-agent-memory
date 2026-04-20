@@ -11,14 +11,6 @@ from memory_inference.open_ended_eval import expand_with_support_entries, is_ope
 from memory_inference.types import MemoryEntry, MemoryKey, Query, RetrievalResult
 
 
-class Mem0SupportLinksPolicy(Mem0MemoryPolicy):
-    """Explicit alias for the current Mem0 baseline with support expansion enabled."""
-
-    def __init__(self, **kwargs) -> None:
-        super().__init__(**kwargs)
-        self.name = "mem0_support_links"
-
-
 class Mem0FeatureAblationPolicy(Mem0MemoryPolicy):
     """Mem0 with optional validity-state bookkeeping and history-aware retrieval."""
 
@@ -48,10 +40,7 @@ class Mem0FeatureAblationPolicy(Mem0MemoryPolicy):
     def retrieve_for_query(self, query: Query, top_k: int = 5) -> RetrievalResult:
         if self.history_aware_retrieval and query.query_mode == QueryMode.HISTORY:
             return self._retrieve_history(query, top_k=top_k)
-        if self.enable_archive_conflict and query.query_mode in {
-            QueryMode.STATE_WITH_PROVENANCE,
-            QueryMode.CONFLICT_AWARE,
-        }:
+        if self.enable_archive_conflict and query.query_mode != QueryMode.HISTORY:
             return self._retrieve_augmented_state(query, top_k=top_k)
         return super().retrieve_for_query(query, top_k=top_k)
 
@@ -64,15 +53,22 @@ class Mem0FeatureAblationPolicy(Mem0MemoryPolicy):
 
     def _apply_update(self, update: MemoryEntry, same_key: Sequence[MemoryEntry]) -> None:
         if self.enable_archive_conflict:
+            self._resolve_conflicts_if_superseded(update, same_key)
             self._record_conflicts(update, same_key)
             self._archive_entries_if_replaced(update, same_key)
         super()._apply_update(update, same_key)
 
     def _apply_delete(self, same_key: Sequence[MemoryEntry]) -> None:
         if self.enable_archive_conflict:
+            self._clear_conflicts_for_key(same_key[0].key if same_key else None)
             for entry in same_key:
                 self._record_archive(entry, status=MemoryStatus.ARCHIVED)
         super()._apply_delete(same_key)
+
+    def _apply_noop(self, existing: MemoryEntry, update: MemoryEntry) -> None:
+        if self.enable_archive_conflict:
+            self._resolve_conflicts_for_key(existing.key)
+        super()._apply_noop(existing, update)
 
     def _retrieve_history(self, query: Query, *, top_k: int) -> RetrievalResult:
         candidates = [
@@ -101,11 +97,16 @@ class Mem0FeatureAblationPolicy(Mem0MemoryPolicy):
 
     def _retrieve_augmented_state(self, query: Query, *, top_k: int) -> RetrievalResult:
         active_ranked = self._rank_for_query(query, self.active_store.values())
-        candidates = list(active_ranked)
-        if query.query_mode == QueryMode.STATE_WITH_PROVENANCE:
-            candidates.extend(self._archive_entries(query))
+        candidates = []
         if query.query_mode == QueryMode.CONFLICT_AWARE:
-            candidates = self._conflict_entries(query) + candidates
+            candidates.extend(self._conflict_entries(query)[:2])
+        candidates.extend(active_ranked)
+        if query.query_mode in {
+            QueryMode.CURRENT_STATE,
+            QueryMode.STATE_WITH_PROVENANCE,
+            QueryMode.CONFLICT_AWARE,
+        }:
+            candidates.extend(self._archive_entries(query)[:2])
 
         deduped: list[MemoryEntry] = []
         seen_ids: set[str] = set()
@@ -191,7 +192,7 @@ class Mem0FeatureAblationPolicy(Mem0MemoryPolicy):
         conflicts = [
             entry
             for entry in same_key
-            if entry.timestamp == update.timestamp
+            if entry.timestamp >= update.timestamp
             and self._normalized_value(entry) != self._normalized_value(update)
         ]
         if not conflicts:
@@ -199,18 +200,34 @@ class Mem0FeatureAblationPolicy(Mem0MemoryPolicy):
         for entry in conflicts:
             self._append_unique(
                 self.conflict_table[key],
-                dataclasses.replace(entry, status=MemoryStatus.CONFLICTED),
+                self._snapshot_entry(entry, status=MemoryStatus.CONFLICTED),
             )
         self._append_unique(
             self.conflict_table[key],
-            dataclasses.replace(update, status=MemoryStatus.CONFLICTED),
+            self._snapshot_entry(update, status=MemoryStatus.CONFLICTED),
         )
 
     def _record_archive(self, entry: MemoryEntry, *, status: MemoryStatus) -> None:
         self._append_unique(
             self.archive[entry.key],
-            dataclasses.replace(entry, status=status),
+            self._snapshot_entry(entry, status=status),
         )
+
+    def _resolve_conflicts_if_superseded(
+        self,
+        update: MemoryEntry,
+        same_key: Sequence[MemoryEntry],
+    ) -> None:
+        if any(entry.timestamp < update.timestamp for entry in same_key):
+            self._resolve_conflicts_for_key(update.key)
+
+    def _resolve_conflicts_for_key(self, key: MemoryKey) -> None:
+        self.conflict_table.pop(key, None)
+
+    def _clear_conflicts_for_key(self, key: MemoryKey | None) -> None:
+        if key is None:
+            return
+        self.conflict_table.pop(key, None)
 
     def _archive_entries(self, query: Query) -> list[MemoryEntry]:
         archived = [
@@ -236,6 +253,11 @@ class Mem0FeatureAblationPolicy(Mem0MemoryPolicy):
         if any(existing.entry_id == candidate.entry_id for existing in entries):
             return
         entries.append(candidate)
+
+    def _snapshot_entry(self, entry: MemoryEntry, *, status: MemoryStatus) -> MemoryEntry:
+        suffix = self._normalized_value(entry).replace(" ", "_")[:24] or "value"
+        snapshot_id = f"{entry.entry_id}::{status.name.lower()}::{entry.timestamp}::{suffix}"
+        return dataclasses.replace(entry, entry_id=snapshot_id, status=status)
 
     def _normalized_value(self, entry: MemoryEntry) -> str:
         return " ".join(entry.value.lower().split())

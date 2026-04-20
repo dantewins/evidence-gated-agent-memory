@@ -137,7 +137,7 @@ class LocalHFReasoner(BaseReasoner):
         if self.config.device == "auto":
             model_kwargs["device_map"] = "auto"
         if self.config.dtype != "auto":
-            model_kwargs["torch_dtype"] = getattr(torch, self.config.dtype)
+            model_kwargs["dtype"] = getattr(torch, self.config.dtype)
         attention_impl = self._attention_implementation(torch)
         if attention_impl is not None:
             model_kwargs["attn_implementation"] = attention_impl

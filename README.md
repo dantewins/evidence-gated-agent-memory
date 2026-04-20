@@ -91,7 +91,7 @@ The intended benefit is not only lower context cost. More importantly, the metho
 
 ## Evaluation design
 
-The evaluation path in this repository is focused on real conversational memory benchmarks rather than synthetic state-tracking tasks. The current codebase runs:
+The evaluation path in this repository is focused on two real conversational memory benchmarks. The current codebase runs:
 
 - LongMemEval-style question answering over long conversational histories
 - LoCoMo-style question answering over multi-session conversational histories

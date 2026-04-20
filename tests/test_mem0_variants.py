@@ -2,7 +2,6 @@ from memory_inference.consolidation.mem0_variants import (
     Mem0AllFeaturesPolicy,
     Mem0ArchiveConflictPolicy,
     Mem0HistoryAwarePolicy,
-    Mem0SupportLinksPolicy,
 )
 from memory_inference.consolidation.revision_types import QueryMode
 from memory_inference.types import MemoryEntry, Query
@@ -30,11 +29,6 @@ class FakeDenseEncoder:
             1.0 if "boston" in lower else 0.0,
             1.0 if "seattle" in lower else 0.0,
         )
-
-
-def test_mem0_support_links_policy_has_explicit_name() -> None:
-    policy = Mem0SupportLinksPolicy(encoder=FakeDenseEncoder())
-    assert policy.name == "mem0_support_links"
 
 
 def test_mem0_archive_conflict_archives_superseded_state() -> None:
@@ -67,6 +61,22 @@ def test_mem0_archive_conflict_archives_superseded_state() -> None:
 
     assert "Google" in archived_values
     assert "Meta" in active_values
+
+    current_state_query = Query(
+        query_id="current-q",
+        entity="user",
+        attribute="employer",
+        question="Where does the user work now?",
+        answer="Meta",
+        timestamp=3,
+        session_id="s",
+        query_mode=QueryMode.CURRENT_STATE,
+    )
+    result = policy.retrieve_for_query(current_state_query, top_k=2)
+
+    assert result.debug["retrieval_mode"] == "mem0_state_augmented"
+    assert {entry.value for entry in result.entries} == {"Google", "Meta"}
+    assert len({entry.entry_id for entry in result.entries}) == 2
 
 
 def test_mem0_history_aware_prefers_older_semantic_match_for_history_query() -> None:
@@ -151,3 +161,34 @@ def test_mem0_all_features_surfaces_conflicts_for_conflict_aware_queries() -> No
 
     assert result.debug["retrieval_mode"] == "mem0_state_augmented"
     assert {"Boston", "Seattle"}.issubset(returned_values)
+
+
+def test_mem0_archive_conflict_records_out_of_order_conflicts() -> None:
+    policy = Mem0ArchiveConflictPolicy(encoder=FakeDenseEncoder())
+    policy.ingest(
+        [
+            MemoryEntry(
+                entry_id="newer",
+                entity="user",
+                attribute="home_city",
+                value="Seattle",
+                timestamp=5,
+                session_id="s",
+                metadata={"memory_kind": "state"},
+            ),
+            MemoryEntry(
+                entry_id="older",
+                entity="user",
+                attribute="home_city",
+                value="Boston",
+                timestamp=4,
+                session_id="s",
+                metadata={"memory_kind": "state"},
+            ),
+        ]
+    )
+
+    conflicts = policy.conflict_table[("user", "home_city")]
+    conflict_values = {entry.value for entry in conflicts}
+
+    assert {"Seattle", "Boston"} == conflict_values

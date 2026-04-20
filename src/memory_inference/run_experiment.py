@@ -15,15 +15,6 @@ class ExperimentResult:
     metrics: ExperimentMetrics
     examples: List[InferenceExample]
 
-
-def evaluate_structured_policy(
-    policy_factory: Callable[[], BaseMemoryPolicy],
-    reasoner: BaseReasoner,
-    batches: Iterable[BenchmarkBatch],
-) -> ExperimentMetrics:
-    return evaluate_structured_policy_full(policy_factory, reasoner, batches).metrics
-
-
 def evaluate_structured_policy_full(
     policy_factory: Callable[[], BaseMemoryPolicy],
     reasoner: BaseReasoner,
