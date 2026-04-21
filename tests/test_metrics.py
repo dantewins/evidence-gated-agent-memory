@@ -6,7 +6,7 @@ from memory_inference.evaluation.metrics import compute_metrics
 from tests.factories import make_query, make_record
 
 
-def test_metrics_report_context_tokens_from_retrieved_memory_not_full_prompt() -> None:
+def test_metrics_report_prompt_tokens_and_retrieved_memory_tokens() -> None:
     query = make_query(
         query_id="q",
         entity="user",
@@ -48,5 +48,6 @@ def test_metrics_report_context_tokens_from_retrieved_memory_not_full_prompt() -
     metrics = compute_metrics("mem0", [evaluated])
 
     assert metrics.avg_prompt_tokens == 99.0
-    assert metrics.avg_context_tokens == 5.0
+    assert metrics.avg_retrieved_context_tokens == 5.0
+    assert metrics.avg_context_tokens == 99.0
     assert metrics.amortized_end_to_end_tokens == 102.0

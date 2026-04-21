@@ -27,8 +27,8 @@ def main(argv: list[str]) -> int:
     policies = sorted({str(row["policy_name"]) for row in rows})
     benchmarks = sorted({str(row["benchmark"]) for row in rows})
 
-    print("| policy | benchmark | accuracy | ctx_tokens | latency_ms | snapshot |")
-    print("| --- | --- | ---: | ---: | ---: | ---: |")
+    print("| policy | benchmark | accuracy | exact_accuracy | ctx_tokens | memory_tokens | latency_ms | snapshot |")
+    print("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |")
     for policy in policies:
         for benchmark in benchmarks:
             match = next(
@@ -44,7 +44,9 @@ def main(argv: list[str]) -> int:
             print(
                 f"| {policy} | {benchmark} | "
                 f"{float(match['accuracy']):.3f} | "
+                f"{float(match.get('exact_match_accuracy', match['accuracy'])):.3f} | "
                 f"{float(match['avg_context_tokens']):.2f} | "
+                f"{float(match.get('avg_retrieved_context_tokens', match['avg_context_tokens'])):.2f} | "
                 f"{float(match['avg_query_latency_ms']):.2f} | "
                 f"{float(match['avg_snapshot_size']):.2f} |"
             )

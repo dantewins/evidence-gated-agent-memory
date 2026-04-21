@@ -1,6 +1,6 @@
 from memory_inference.memory.policies import AppendOnlyMemoryPolicy
 from memory_inference.memory.policies import RecencySalienceMemoryPolicy
-from memory_inference.evaluation.scoring import answers_match
+from memory_inference.evaluation.scoring import answers_exact_match, answers_match, answers_span_match
 from memory_inference.llm.prompting import build_reasoning_prompt
 from memory_inference.llm.mock_consolidator import MockConsolidator
 from memory_inference.memory.policies import offline_delta_v2_policy
@@ -9,11 +9,27 @@ from tests.factories import make_query, make_record
 
 def test_answers_match_normalizes_short_span_predictions() -> None:
     assert answers_match("Business Administration.", "Business Administration")
-    assert not answers_match(
+    assert answers_match(
         "She graduated with Business Administration",
         "Business Administration",
     )
     assert not answers_match("Psychology", "Business Administration")
+
+
+def test_exact_match_metric_remains_strict() -> None:
+    assert answers_exact_match("Business Administration.", "Business Administration")
+    assert not answers_exact_match(
+        "She graduated with Business Administration",
+        "Business Administration",
+    )
+
+
+def test_span_match_metric_accepts_token_aligned_containment() -> None:
+    assert answers_span_match(
+        "She graduated with Business Administration",
+        "Business Administration",
+    )
+    assert not answers_span_match("metagoogle", "Google")
 
 
 def test_append_only_uses_lexical_retrieval_for_dialogue_queries() -> None:

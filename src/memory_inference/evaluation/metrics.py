@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence
 
 from memory_inference.domain.results import EvaluatedCase
+from memory_inference.evaluation.scoring import answers_exact_match, answers_span_match
 
 ABSTAIN_TOKEN = "ABSTAIN"
 
@@ -14,10 +15,13 @@ class ExperimentMetrics:
     total_queries: int
     correct_queries: int
     accuracy: float
+    exact_match_accuracy: float
+    span_match_accuracy: float
     abstention_accuracy: float
     proactive_interference_rate: float
     avg_retrieved_items: float
     avg_retrieved_chars: float
+    avg_retrieved_context_tokens: float
     avg_context_tokens: float
     avg_prompt_tokens: float
     avg_completion_tokens: float
@@ -40,6 +44,16 @@ def compute_metrics(
     rows: List[EvaluatedCase] = list(evaluated_cases)
     total = len(rows)
     correct = sum(1 for row in rows if row.correct)
+    exact_correct = sum(
+        1
+        for row in rows
+        if answers_exact_match(row.prediction, row.case.eval_target.gold_answer)
+    )
+    span_correct = sum(
+        1
+        for row in rows
+        if answers_span_match(row.prediction, row.case.eval_target.gold_answer)
+    )
     abstention_queries = [row for row in rows if row.case.eval_target.supports_abstention]
     abstention_correct = sum(
         1
@@ -56,11 +70,12 @@ def compute_metrics(
     avg_prompt_tokens = (
         sum(row.reader_trace.prompt_tokens for row in rows) / total if total else 0.0
     )
-    avg_context_tokens = (
+    avg_retrieved_context_tokens = (
         sum(sum(_token_count(record.text()) for record in row.retrieval_bundle.records) for row in rows) / total
         if total
         else 0.0
     )
+    avg_context_tokens = avg_prompt_tokens if avg_prompt_tokens > 0 else avg_retrieved_context_tokens
     avg_completion_tokens = (
         sum(row.reader_trace.completion_tokens for row in rows) / total if total else 0.0
     )
@@ -79,12 +94,15 @@ def compute_metrics(
         total_queries=total,
         correct_queries=correct,
         accuracy=(correct / total) if total else 0.0,
+        exact_match_accuracy=(exact_correct / total) if total else 0.0,
+        span_match_accuracy=(span_correct / total) if total else 0.0,
         abstention_accuracy=(
             abstention_correct / len(abstention_queries) if abstention_queries else 0.0
         ),
         proactive_interference_rate=(interference_count / total) if total else 0.0,
         avg_retrieved_items=avg_items,
         avg_retrieved_chars=avg_chars,
+        avg_retrieved_context_tokens=avg_retrieved_context_tokens,
         avg_context_tokens=avg_context_tokens,
         avg_prompt_tokens=avg_prompt_tokens,
         avg_completion_tokens=avg_completion_tokens,
@@ -113,4 +131,3 @@ def _has_proactive_interference(row: EvaluatedCase) -> bool:
 
 def _token_count(text: str) -> int:
     return len(text.split())
-

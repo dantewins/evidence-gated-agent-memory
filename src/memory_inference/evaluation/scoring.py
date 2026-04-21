@@ -6,11 +6,27 @@ from memory_inference.domain.results import EvaluatedCase, ExecutedCase
 
 
 def answers_match(prediction: str, gold: str) -> bool:
+    return answers_exact_match(prediction, gold) or answers_span_match(prediction, gold)
+
+
+def answers_exact_match(prediction: str, gold: str) -> bool:
     normalized_prediction = normalize_answer(prediction)
     normalized_gold = normalize_answer(gold)
     if not normalized_prediction or not normalized_gold:
         return False
     return normalized_prediction == normalized_gold
+
+
+def answers_span_match(prediction: str, gold: str) -> bool:
+    normalized_prediction = normalize_answer(prediction)
+    normalized_gold = normalize_answer(gold)
+    if not normalized_prediction or not normalized_gold:
+        return False
+    if normalized_prediction == normalized_gold:
+        return True
+    if _contains_as_span(normalized_prediction, normalized_gold):
+        return True
+    return _contains_as_span(normalized_gold, normalized_prediction)
 
 
 def normalize_answer(text: str) -> str:
@@ -20,6 +36,10 @@ def normalize_answer(text: str) -> str:
     normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
     normalized = re.sub(r"\s+", " ", normalized)
     return normalized.strip()
+
+
+def _contains_as_span(container: str, span: str) -> bool:
+    return bool(re.search(rf"(^|\s){re.escape(span)}($|\s)", container))
 
 
 def evaluate_executed_case(executed: ExecutedCase) -> EvaluatedCase:
