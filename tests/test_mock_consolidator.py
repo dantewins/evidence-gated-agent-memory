@@ -1,10 +1,11 @@
-from memory_inference.consolidation.consolidation_types import UpdateType
+from memory_inference.domain.enums import UpdateType
+from memory_inference.domain.memory import MemoryRecord
 from memory_inference.llm.mock_consolidator import MockConsolidator
-from memory_inference.types import MemoryEntry
+from tests.factories import make_record
 
 
-def _entry(entry_id: str, value: str, timestamp: int, confidence: float = 1.0) -> MemoryEntry:
-    return MemoryEntry(
+def _entry(entry_id: str, value: str, timestamp: int, confidence: float = 1.0) -> MemoryRecord:
+    return make_record(
         entry_id=entry_id, entity="u", attribute="a",
         value=value, timestamp=timestamp, session_id="s",
         confidence=confidence,

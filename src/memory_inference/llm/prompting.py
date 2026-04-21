@@ -3,9 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Sequence
 
-from memory_inference.consolidation.revision_types import QueryMode
-from memory_inference.metrics import ABSTAIN_TOKEN
-from memory_inference.types import MemoryEntry, Query
+from memory_inference.domain.enums import QueryMode
+from memory_inference.domain.memory import MemoryRecord
+from memory_inference.domain.query import RuntimeQuery
+from memory_inference.evaluation.metrics import ABSTAIN_TOKEN
 
 
 @dataclass(slots=True)
@@ -18,8 +19,8 @@ class PromptPackage:
 
 
 def build_reasoning_prompt(
-    query: Query,
-    context: Sequence[MemoryEntry],
+    query: RuntimeQuery,
+    context: Sequence[MemoryRecord],
     *,
     template_id: str = "validity-v1",
     system_prompt: str = (
@@ -69,8 +70,7 @@ def render_prompt(
             return package.prompt
     return package.prompt
 
-
-def _instruction_for_query(query: Query) -> str:
+def _instruction_for_query(query: RuntimeQuery) -> str:
     if query.query_mode == QueryMode.HISTORY:
         return "Return the historically relevant value from the provided timeline."
     if query.query_mode == QueryMode.STATE_WITH_PROVENANCE:
@@ -80,7 +80,7 @@ def _instruction_for_query(query: Query) -> str:
     return "Return the current valid value from memory."
 
 
-def _format_context(context: Sequence[MemoryEntry]) -> str:
+def _format_context(context: Sequence[MemoryRecord]) -> str:
     if not context:
         return "(no memory retrieved)"
     return "\n".join(
@@ -91,15 +91,21 @@ def _format_context(context: Sequence[MemoryEntry]) -> str:
     )
 
 
-def _format_metadata(entry: MemoryEntry) -> str:
-    if not entry.metadata:
-        return ""
+def _format_metadata(entry: MemoryRecord) -> str:
     visible_items = []
-    for key in ("source_date", "session_label", "session_id", "speaker", "source_kind", "memory_kind"):
-        value = entry.metadata.get(key)
+    typed_values = {
+        "source_date": getattr(entry, "source_date", ""),
+        "session_label": getattr(entry, "session_label", ""),
+        "session_id": entry.session_id,
+        "speaker": getattr(entry, "speaker", ""),
+        "source_kind": getattr(entry, "source_kind", ""),
+        "memory_kind": getattr(entry, "memory_kind", ""),
+    }
+    for key, typed_value in typed_values.items():
+        value = typed_value
         if value:
             visible_items.append(f"{key}={value}")
-    support_text = entry.metadata.get("support_text")
+    support_text = getattr(entry, "support_text", "")
     if support_text:
         visible_items.append(f"support={_compact_support_text(support_text)}")
     if not visible_items:

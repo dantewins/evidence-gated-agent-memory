@@ -1,12 +1,13 @@
 """Tests for classify_revision() on BaseConsolidator / MockConsolidator."""
-from memory_inference.consolidation.revision_types import RevisionOp
+from memory_inference.domain.enums import RevisionOp
+from memory_inference.domain.memory import MemoryRecord
 from memory_inference.llm.mock_consolidator import MockConsolidator
-from memory_inference.types import MemoryEntry
+from tests.factories import make_record
 
 
 def _e(entry_id: str, value: str, ts: int, confidence: float = 1.0,
-       scope: str = "default") -> MemoryEntry:
-    return MemoryEntry(
+       scope: str = "default") -> MemoryRecord:
+    return make_record(
         entry_id=entry_id, entity="u", attribute="a",
         value=value, timestamp=ts, session_id="s",
         confidence=confidence, scope=scope,

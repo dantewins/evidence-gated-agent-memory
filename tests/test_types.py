@@ -1,9 +1,9 @@
-from memory_inference.consolidation.revision_types import MemoryStatus, QueryMode
-from memory_inference.types import MemoryEntry, Query
+from memory_inference.domain.enums import MemoryStatus, QueryMode
+from tests.factories import make_query, make_record
 
 
 def test_memory_entry_defaults_and_helpers_reflect_current_schema() -> None:
-    entry = MemoryEntry(
+    entry = make_record(
         entry_id="e1",
         entity="user",
         attribute="home_city",
@@ -24,7 +24,7 @@ def test_memory_entry_defaults_and_helpers_reflect_current_schema() -> None:
 
 
 def test_memory_entry_allows_nondefault_validity_fields() -> None:
-    entry = MemoryEntry(
+    entry = make_record(
         entry_id="e2",
         entity="user",
         attribute="home_city",
@@ -44,7 +44,7 @@ def test_memory_entry_allows_nondefault_validity_fields() -> None:
 
 
 def test_query_defaults_and_key_reflect_current_schema() -> None:
-    query = Query(
+    query = make_query(
         query_id="q1",
         entity="user",
         attribute="home_city",
@@ -61,7 +61,7 @@ def test_query_defaults_and_key_reflect_current_schema() -> None:
 
 
 def test_query_allows_multihop_and_conflict_settings() -> None:
-    query = Query(
+    query = make_query(
         query_id="q2",
         entity="user",
         attribute="employer",

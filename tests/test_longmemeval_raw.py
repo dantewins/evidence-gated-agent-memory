@@ -3,11 +3,8 @@ import json
 import tempfile
 from pathlib import Path
 
-from memory_inference.benchmarks.longmemeval_raw import (
-    load_raw_longmemeval,
-    preprocess_raw_longmemeval,
-)
-from memory_inference.consolidation.revision_types import QueryMode
+from memory_inference.domain.enums import QueryMode
+from memory_inference.datasets.preprocessing import load_raw_longmemeval_dataset
 
 FIXTURE = [
     {
@@ -61,14 +58,14 @@ def _write_fixture():
 class TestLoadRawLongMemEval:
     def test_basic_loading(self):
         path = _write_fixture()
-        batches = load_raw_longmemeval(path)
-        assert len(batches) == 3
+        records = load_raw_longmemeval_dataset(path).records
+        assert len(records) == 3
 
     def test_updates_from_sessions(self):
         path = _write_fixture()
-        batches = load_raw_longmemeval(path)
-        dialogue_updates = [u for u in batches[0].updates if u.attribute == "dialogue"]
-        structured_updates = [u for u in batches[0].updates if u.attribute == "home_city"]
+        records = load_raw_longmemeval_dataset(path).records
+        dialogue_updates = [u for u in records[0].context.updates if u.attribute == "dialogue"]
+        structured_updates = [u for u in records[0].context.updates if u.attribute == "home_city"]
         assert len(dialogue_updates) == 3
         assert dialogue_updates[0].entity == "user"
         assert structured_updates
@@ -77,47 +74,45 @@ class TestLoadRawLongMemEval:
 
     def test_query_mapping(self):
         path = _write_fixture()
-        batches = load_raw_longmemeval(path)
-        q = batches[0].queries[0]
+        case = load_raw_longmemeval_dataset(path).records[0].cases[0]
+        q = case.runtime_query
         assert q.question == "What city does the user live in now?"
-        assert q.answer == "Boston"
+        assert case.eval_target.gold_answer == "Boston"
         assert q.query_mode == QueryMode.CURRENT_STATE
         assert q.attribute == "home_city"
 
     def test_temporal_query_mode(self):
         path = _write_fixture()
-        batches = load_raw_longmemeval(path)
-        q = batches[1].queries[0]
+        q = load_raw_longmemeval_dataset(path).records[1].cases[0].runtime_query
         assert q.query_mode == QueryMode.HISTORY
         assert q.timestamp == 2
 
     def test_assistant_question_targets_assistant_entity(self):
         path = _write_fixture()
-        batches = load_raw_longmemeval(path)
-        q = batches[2].queries[0]
+        q = load_raw_longmemeval_dataset(path).records[2].cases[0].runtime_query
         assert q.entity == "assistant"
 
     def test_abstention_suffix_sets_supports_abstention(self):
         path = _write_fixture()
-        batches = load_raw_longmemeval(path)
-        q = batches[2].queries[0]
+        q = load_raw_longmemeval_dataset(path).records[2].cases[0].runtime_query
         assert q.supports_abstention is True
 
     def test_limit(self):
         path = _write_fixture()
-        batches = load_raw_longmemeval(path, limit=1)
-        assert len(batches) == 1
+        records = load_raw_longmemeval_dataset(path, limit=1).records
+        assert len(records) == 1
 
 
 class TestPreprocessRawLongMemEval:
     def test_integrity_stats(self):
         path = _write_fixture()
-        dataset = preprocess_raw_longmemeval(path)
-        assert dataset.total_sessions == 3
+        dataset = load_raw_longmemeval_dataset(path)
+        assert dataset.total_contexts == 3
         assert dataset.total_queries == 3
         assert dataset.total_updates > 7  # dialogue turns plus extracted structured facts
         assert dataset.dropped_records == 0
         assert dataset.source_dataset == "longmemeval"
+        assert dataset.records[0].cases[0].runtime_query.attribute == "home_city"
 
     def test_empty_turns_skipped(self):
         fixture = [{"question_id": "q_x", "question": "q", "answer": "a",
@@ -125,8 +120,8 @@ class TestPreprocessRawLongMemEval:
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(fixture, tmp)
         tmp.close()
-        batches = load_raw_longmemeval(tmp.name)
-        assert len(batches[0].updates) == 0
+        records = load_raw_longmemeval_dataset(tmp.name).records
+        assert len(records[0].context.updates) == 0
 
     def test_nested_sessions_preserve_source_dates(self):
         fixture = [{
@@ -143,10 +138,10 @@ class TestPreprocessRawLongMemEval:
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(fixture, tmp)
         tmp.close()
-        batches = load_raw_longmemeval(tmp.name)
-        assert batches[0].updates[0].metadata["source_date"] == "2024-01-20"
-        assert batches[0].updates[0].metadata["session_label"] == "sess_1"
-        assert batches[0].updates[0].scope == "sess_1"
+        records = load_raw_longmemeval_dataset(tmp.name).records
+        assert records[0].context.updates[0].source_date == "2024-01-20"
+        assert records[0].context.updates[0].session_label == "sess_1"
+        assert records[0].context.updates[0].scope == "sess_1"
 
     def test_query_falls_back_to_dialogue_for_when_questions(self):
         fixture = [{
@@ -162,8 +157,8 @@ class TestPreprocessRawLongMemEval:
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(fixture, tmp)
         tmp.close()
-        batches = load_raw_longmemeval(tmp.name)
-        assert batches[0].queries[0].attribute == "dialogue"
+        records = load_raw_longmemeval_dataset(tmp.name).records
+        assert records[0].cases[0].runtime_query.attribute == "dialogue"
 
     def test_structured_facts_include_support_metadata_and_event_scope(self):
         fixture = [{
@@ -179,11 +174,11 @@ class TestPreprocessRawLongMemEval:
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(fixture, tmp)
         tmp.close()
-        batches = load_raw_longmemeval(tmp.name)
-        facts = [u for u in batches[0].updates if u.attribute == "created_name"]
+        records = load_raw_longmemeval_dataset(tmp.name).records
+        facts = [u for u in records[0].context.updates if u.attribute == "created_name"]
 
         assert facts
-        assert facts[0].metadata["source_kind"] == "structured_fact"
-        assert facts[0].metadata["source_attribute"] == "dialogue"
-        assert facts[0].metadata["support_text"] == "I created a playlist on Spotify called Summer Vibes."
+        assert facts[0].source_kind == "structured_fact"
+        assert facts[0].source_attribute == "dialogue"
+        assert facts[0].support_text == "I created a playlist on Spotify called Summer Vibes."
         assert facts[0].scope.startswith("sess_1:turn_0:fact_")

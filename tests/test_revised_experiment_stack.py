@@ -1,16 +1,19 @@
-from memory_inference.consolidation.append_only import AppendOnlyMemoryPolicy
-from memory_inference.consolidation.exact_match import ExactMatchMemoryPolicy
-from memory_inference.consolidation.strong_retrieval import StrongRetrievalMemoryPolicy
+from memory_inference.memory.policies import AppendOnlyMemoryPolicy
+from memory_inference.memory.policies import ExactMatchMemoryPolicy
+from memory_inference.memory.policies import StrongRetrievalMemoryPolicy
+from memory_inference.datasets.normalized_io import NormalizedRecord
+from memory_inference.domain.benchmark import ExperimentCase, ExperimentContext
 from memory_inference.llm.deterministic_reader import DeterministicValidityReader
-from memory_inference.run_experiment import evaluate_structured_policy_full
-from memory_inference.types import BenchmarkBatch, MemoryEntry, Query
+from memory_inference.orchestration.experiment import evaluate_structured_policy_full
+from memory_inference.evaluation.targets import EvalTarget
+from tests.factories import make_query, make_record
 
 
 def test_exact_match_policy_preserves_multiple_scopes() -> None:
     policy = ExactMatchMemoryPolicy()
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="boston",
                 entity="user",
                 attribute="favorite_spot",
@@ -19,7 +22,7 @@ def test_exact_match_policy_preserves_multiple_scopes() -> None:
                 session_id="s",
                 scope="boston",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="miami",
                 entity="user",
                 attribute="favorite_spot",
@@ -40,7 +43,7 @@ def test_strong_retrieval_prioritizes_exact_entity_and_attribute() -> None:
     policy = StrongRetrievalMemoryPolicy()
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="target",
                 entity="user",
                 attribute="home_city",
@@ -48,7 +51,7 @@ def test_strong_retrieval_prioritizes_exact_entity_and_attribute() -> None:
                 timestamp=1,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="distractor",
                 entity="friend",
                 attribute="home_city",
@@ -56,7 +59,7 @@ def test_strong_retrieval_prioritizes_exact_entity_and_attribute() -> None:
                 timestamp=2,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="wrong-attr",
                 entity="user",
                 attribute="employer",
@@ -66,7 +69,7 @@ def test_strong_retrieval_prioritizes_exact_entity_and_attribute() -> None:
             ),
         ]
     )
-    query = Query(
+    query = make_query(
         query_id="q1",
         entity="user",
         attribute="home_city",
@@ -83,11 +86,11 @@ def test_strong_retrieval_prioritizes_exact_entity_and_attribute() -> None:
 
 
 def test_structured_evaluation_resets_policy_state_per_batch() -> None:
-    batches = [
-        BenchmarkBatch(
-            session_id="batch-1",
+    records = [
+        _normalized_record(
+            context_id="batch-1",
             updates=[
-                MemoryEntry(
+                make_record(
                     entry_id="u1",
                     entity="user",
                     attribute="home_city",
@@ -97,21 +100,21 @@ def test_structured_evaluation_resets_policy_state_per_batch() -> None:
                 )
             ],
             queries=[
-                Query(
+                make_query(
                     query_id="q1",
                     entity="user",
                     attribute="home_city",
                     question="Where do I live?",
-                    answer="Boston",
                     timestamp=1,
                     session_id="batch-1",
                 )
             ],
+            answers=["Boston"],
         ),
-        BenchmarkBatch(
-            session_id="batch-2",
+        _normalized_record(
+            context_id="batch-2",
             updates=[
-                MemoryEntry(
+                make_record(
                     entry_id="u2",
                     entity="user",
                     attribute="home_city",
@@ -121,32 +124,32 @@ def test_structured_evaluation_resets_policy_state_per_batch() -> None:
                 )
             ],
             queries=[
-                Query(
+                make_query(
                     query_id="q2",
                     entity="user",
                     attribute="home_city",
                     question="Where do I live?",
-                    answer="Seattle",
                     timestamp=1,
                     session_id="batch-2",
                 )
             ],
+            answers=["Seattle"],
         ),
     ]
 
     result = evaluate_structured_policy_full(
         AppendOnlyMemoryPolicy,
         DeterministicValidityReader(),
-        batches,
+        records,
     )
 
     assert result.metrics.accuracy == 1.0
-    assert [example.correct for example in result.examples] == [True, True]
+    assert [case.correct for case in result.evaluated_cases] == [True, True]
 
 
 def test_structured_evaluation_does_not_double_ingest_repeated_full_context_batches() -> None:
     updates = [
-        MemoryEntry(
+        make_record(
             entry_id="u1",
             entity="user",
             attribute="dialogue",
@@ -154,7 +157,7 @@ def test_structured_evaluation_does_not_double_ingest_repeated_full_context_batc
             timestamp=0,
             session_id="sample-1",
         ),
-        MemoryEntry(
+        make_record(
             entry_id="u2",
             entity="user",
             attribute="dialogue",
@@ -163,45 +166,70 @@ def test_structured_evaluation_does_not_double_ingest_repeated_full_context_batc
             session_id="sample-1",
         ),
     ]
-    batches = [
-        BenchmarkBatch(
-            session_id="sample-1-q1",
+    records = [
+        _normalized_record(
+            context_id="sample-1-q1",
             updates=list(updates),
             queries=[
-                Query(
+                make_query(
                     query_id="q1",
                     entity="user",
                     attribute="dialogue",
                     question="Where do I live?",
-                    answer="Boston",
                     timestamp=2,
                     session_id="sample-1",
                 )
             ],
+            answers=["Boston"],
         ),
-        BenchmarkBatch(
-            session_id="sample-1-q2",
+        _normalized_record(
+            context_id="sample-1-q2",
             updates=list(updates),
             queries=[
-                Query(
+                make_query(
                     query_id="q2",
                     entity="user",
                     attribute="dialogue",
                     question="What degree did I graduate with?",
-                    answer="Business Administration",
                     timestamp=2,
                     session_id="sample-1",
                 )
             ],
+            answers=["Business Administration"],
         ),
     ]
 
     result = evaluate_structured_policy_full(
         AppendOnlyMemoryPolicy,
         DeterministicValidityReader(),
-        batches,
+        records,
     )
 
-    assert len(result.examples) == 2
-    assert len(result.examples[0].retrieved) == len(updates)
-    assert len(result.examples[1].retrieved) == len(updates)
+    assert len(result.evaluated_cases) == 2
+    assert len(result.evaluated_cases[0].retrieval_bundle.records) == len(updates)
+    assert len(result.evaluated_cases[1].retrieval_bundle.records) == len(updates)
+
+
+def _normalized_record(context_id: str, updates, queries, answers) -> NormalizedRecord:
+    context = ExperimentContext(
+        context_id=context_id,
+        session_id=context_id,
+        updates=list(updates),
+    )
+    cases = [
+        ExperimentCase(
+            case_id=query.query_id,
+            context_id=context_id,
+            runtime_query=query,
+            eval_target=EvalTarget(query_id=query.query_id, gold_answer=answer),
+        )
+        for query, answer in zip(queries, answers)
+    ]
+    return NormalizedRecord(
+        schema_version="test",
+        source_dataset="test",
+        source_split="test",
+        source_record_id=context_id,
+        context=context,
+        cases=cases,
+    )

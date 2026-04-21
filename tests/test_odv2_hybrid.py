@@ -1,7 +1,7 @@
-from memory_inference.consolidation.odv2_hybrid import ODV2DenseMemoryPolicy, ODV2StrongMemoryPolicy
-from memory_inference.consolidation.revision_types import QueryMode
+from memory_inference.domain.enums import QueryMode
 from memory_inference.llm.mock_consolidator import MockConsolidator
-from memory_inference.types import MemoryEntry, Query
+from memory_inference.memory.policies import ODV2Policy, odv2_dense_policy, odv2_strong_policy
+from tests.factories import make_query, make_record
 
 
 class FakeDenseEncoder:
@@ -26,17 +26,17 @@ class FakeDenseEncoder:
         )
 
 
-def _strong_policy() -> ODV2StrongMemoryPolicy:
-    return ODV2StrongMemoryPolicy(consolidator=MockConsolidator())
+def _strong_policy() -> ODV2Policy:
+    return odv2_strong_policy(consolidator=MockConsolidator())
 
 
-def _dense_policy() -> ODV2DenseMemoryPolicy:
-    return ODV2DenseMemoryPolicy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
+def _dense_policy() -> ODV2Policy:
+    return odv2_dense_policy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
 
 
 def test_odv2_strong_structured_query_returns_state_and_support_evidence() -> None:
     p = _strong_policy()
-    support = MemoryEntry(
+    support = make_record(
         entry_id="turn-1",
         entity="Alice",
         attribute="dialogue",
@@ -45,7 +45,7 @@ def test_odv2_strong_structured_query_returns_state_and_support_evidence() -> No
         session_id="s",
         scope="session_1",
     )
-    fact = MemoryEntry(
+    fact = make_record(
         entry_id="fact-1",
         entity="Alice",
         attribute="employer",
@@ -63,7 +63,7 @@ def test_odv2_strong_structured_query_returns_state_and_support_evidence() -> No
     p.ingest([support, fact])
     p.maybe_consolidate()
 
-    query = Query(
+    query = make_query(
         query_id="q-structured",
         entity="Alice",
         attribute="employer",
@@ -83,7 +83,7 @@ def test_odv2_strong_structured_query_returns_state_and_support_evidence() -> No
 
 def test_odv2_dense_structured_query_returns_state_and_support_evidence() -> None:
     p = _dense_policy()
-    support = MemoryEntry(
+    support = make_record(
         entry_id="turn-1",
         entity="Alice",
         attribute="dialogue",
@@ -92,7 +92,7 @@ def test_odv2_dense_structured_query_returns_state_and_support_evidence() -> Non
         session_id="s",
         scope="session_1",
     )
-    fact = MemoryEntry(
+    fact = make_record(
         entry_id="fact-1",
         entity="Alice",
         attribute="employer",
@@ -110,7 +110,7 @@ def test_odv2_dense_structured_query_returns_state_and_support_evidence() -> Non
     p.ingest([support, fact])
     p.maybe_consolidate()
 
-    query = Query(
+    query = make_query(
         query_id="q-structured",
         entity="Alice",
         attribute="employer",
@@ -132,7 +132,7 @@ def test_odv2_dense_history_query_surfaces_prior_and_current_values() -> None:
     p = _dense_policy()
     p.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="turn-google",
                 entity="Alice",
                 attribute="dialogue",
@@ -141,7 +141,7 @@ def test_odv2_dense_history_query_surfaces_prior_and_current_values() -> None:
                 session_id="s",
                 scope="session_1",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="fact-google",
                 entity="Alice",
                 attribute="employer",
@@ -156,7 +156,7 @@ def test_odv2_dense_history_query_surfaces_prior_and_current_values() -> None:
                     "memory_kind": "state",
                 },
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="turn-meta",
                 entity="Alice",
                 attribute="dialogue",
@@ -165,7 +165,7 @@ def test_odv2_dense_history_query_surfaces_prior_and_current_values() -> None:
                 session_id="s",
                 scope="session_2",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="fact-meta",
                 entity="Alice",
                 attribute="employer",
@@ -184,7 +184,7 @@ def test_odv2_dense_history_query_surfaces_prior_and_current_values() -> None:
     )
     p.maybe_consolidate()
 
-    query = Query(
+    query = make_query(
         query_id="q-history",
         entity="Alice",
         attribute="employer",

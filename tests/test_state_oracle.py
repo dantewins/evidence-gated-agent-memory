@@ -1,16 +1,16 @@
-"""Tests for StateOracle — evaluates validity state from a list of MemoryEntry."""
-import dataclasses
+"""Tests for StateOracle over canonical memory records."""
 
-from memory_inference.consolidation.revision_types import MemoryStatus
-from memory_inference.consolidation.state_oracle import StateOracle
-from memory_inference.types import MemoryEntry
+from memory_inference.domain.enums import MemoryStatus
+from memory_inference.evaluation.state_oracle import StateOracle
+from memory_inference.domain.memory import MemoryRecord
+from tests.factories import make_record
 
 
 def _e(entry_id: str, entity: str, attribute: str, value: str, timestamp: int,
        status: MemoryStatus = MemoryStatus.ACTIVE,
        scope: str = "default",
-       supersedes_id: str | None = None) -> MemoryEntry:
-    return MemoryEntry(
+       supersedes_id: str | None = None) -> MemoryRecord:
+    return make_record(
         entry_id=entry_id, entity=entity, attribute=attribute,
         value=value, timestamp=timestamp, session_id="s",
         status=status, scope=scope, supersedes_id=supersedes_id,

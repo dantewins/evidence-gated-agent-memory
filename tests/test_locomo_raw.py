@@ -2,11 +2,8 @@
 import json
 import tempfile
 
-from memory_inference.benchmarks.locomo_raw import (
-    load_raw_locomo,
-    preprocess_raw_locomo,
-)
-from memory_inference.consolidation.revision_types import QueryMode
+from memory_inference.domain.enums import QueryMode
+from memory_inference.datasets.preprocessing import load_raw_locomo_dataset
 
 FIXTURE = [
     {
@@ -79,62 +76,67 @@ def _write_fixture():
 class TestLoadRawLoCoMo:
     def test_basic_loading(self):
         path = _write_fixture()
-        batches = load_raw_locomo(path)
-        # 2 scored QA pairs in sample_001 + 1 scored QA in sample_002
-        assert len(batches) == 3
+        records = load_raw_locomo_dataset(path).records
+        assert len(records) == 2
+        assert len(records[0].cases) == 2
+        assert len(records[1].cases) == 1
 
     def test_event_summary_entries(self):
         path = _write_fixture()
-        batches = load_raw_locomo(path)
-        events = [u for u in batches[0].updates if u.provenance == "locomo_event_summary"]
+        records = load_raw_locomo_dataset(path).records
+        events = [u for u in records[0].context.updates if u.provenance == "locomo_event_summary"]
         assert len(events) == 2
         assert events[0].entity == "Alice"
-        employers = [u for u in batches[0].updates if u.attribute == "employer"]
+        employers = [u for u in records[0].context.updates if u.attribute == "employer"]
         assert {u.value for u in employers} >= {"Google", "Meta"}
 
     def test_dialogue_entries(self):
         path = _write_fixture()
-        batches = load_raw_locomo(path)
-        dialogues = [u for u in batches[0].updates if u.provenance == "locomo_dialogue"]
+        records = load_raw_locomo_dataset(path).records
+        dialogues = [u for u in records[0].context.updates if u.provenance == "locomo_dialogue"]
         assert len(dialogues) == 3  # 2 from session_1 + 1 from session_2
 
     def test_query_mapping(self):
         path = _write_fixture()
-        batches = load_raw_locomo(path)
-        q0 = batches[0].queries[0]
+        case = load_raw_locomo_dataset(path).records[0].cases[0]
+        q0 = case.runtime_query
         assert q0.question == "Where does Alice work now?"
-        assert q0.answer == "Meta"
+        assert case.eval_target.gold_answer == "Meta"
         assert q0.query_mode == QueryMode.CURRENT_STATE
         assert q0.entity == "Alice"
         assert q0.attribute == "employer"
 
     def test_temporal_category(self):
         path = _write_fixture()
-        batches = load_raw_locomo(path)
-        q1 = batches[1].queries[0]
+        q1 = load_raw_locomo_dataset(path).records[0].cases[1].runtime_query
         assert q1.query_mode == QueryMode.HISTORY
 
     def test_dialogue_entries_include_session_date(self):
         path = _write_fixture()
-        batches = load_raw_locomo(path)
-        dialogues = [u for u in batches[0].updates if u.provenance == "locomo_dialogue"]
-        assert dialogues[0].metadata["source_date"] == "2024-01-10"
+        records = load_raw_locomo_dataset(path).records
+        dialogues = [u for u in records[0].context.updates if u.provenance == "locomo_dialogue"]
+        assert dialogues[0].source_date == "2024-01-10"
         assert dialogues[0].scope == "session_1"
 
     def test_limit(self):
         path = _write_fixture()
-        batches = load_raw_locomo(path, limit=1)
-        # limit=1 limits samples, not batches, but 1 sample -> 2 QA -> 2 batches
-        assert len(batches) == 2
+        records = load_raw_locomo_dataset(path, limit=1).records
+        assert len(records) == 1
+        assert len(records[0].cases) == 2
 
     def test_missing_answer_adversarial_question_is_skipped(self):
         path = _write_fixture()
-        batches = load_raw_locomo(path)
-        questions = [batch.queries[0].question for batch in batches]
+        records = load_raw_locomo_dataset(path).records
+        questions = [case.runtime_query.question for record in records for case in record.cases]
         assert "Would Caroline be likely to own a spaceship?" not in questions
         assert "Where did Caroline move from?" in questions
-        followup = next(batch for batch in batches if batch.queries[0].question == "Where did Caroline move from?")
-        assert followup.queries[0].attribute == "origin"
+        followup = next(
+            case.runtime_query
+            for record in records
+            for case in record.cases
+            if case.runtime_query.question == "Where did Caroline move from?"
+        )
+        assert followup.attribute == "origin"
 
     def test_non_temporal_unstructured_locomo_questions_default_to_dialogue(self):
         fixture = [
@@ -161,16 +163,18 @@ class TestLoadRawLoCoMo:
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
         json.dump(fixture, tmp)
         tmp.close()
-        batches = load_raw_locomo(tmp.name)
+        records = load_raw_locomo_dataset(tmp.name).records
 
-        assert batches[0].queries[0].attribute == "dialogue"
+        assert records[0].cases[0].runtime_query.attribute == "dialogue"
 
 
 class TestPreprocessRawLoCoMo:
     def test_integrity_stats(self):
         path = _write_fixture()
-        dataset = preprocess_raw_locomo(path)
+        dataset = load_raw_locomo_dataset(path)
         assert dataset.source_dataset == "locomo"
+        assert dataset.total_contexts == 2
         assert dataset.total_queries == 3
         assert dataset.dropped_records == 0
         assert dataset.total_updates > 0
+        assert len(dataset.records[0].cases) == 2

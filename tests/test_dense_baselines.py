@@ -1,7 +1,7 @@
-from memory_inference.consolidation.dense_retrieval import DenseRetrievalMemoryPolicy
-from memory_inference.consolidation.mem0 import Mem0MemoryPolicy
-from memory_inference.experiment_registry import policy_factory_by_name
-from memory_inference.types import MemoryEntry, Query
+from memory_inference.memory.policies import DenseRetrievalMemoryPolicy
+from memory_inference.memory.policies import mem0_policy
+from memory_inference.orchestration.presets import policy_factory_by_name
+from tests.factories import make_query, make_record
 
 
 class FakeDenseEncoder:
@@ -33,7 +33,7 @@ def test_dense_retrieval_prioritizes_semantic_match_for_dialogue_query() -> None
     policy = DenseRetrievalMemoryPolicy(encoder=FakeDenseEncoder())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="target",
                 entity="user",
                 attribute="dialogue",
@@ -41,7 +41,7 @@ def test_dense_retrieval_prioritizes_semantic_match_for_dialogue_query() -> None
                 timestamp=1,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="distractor",
                 entity="user",
                 attribute="dialogue",
@@ -51,7 +51,7 @@ def test_dense_retrieval_prioritizes_semantic_match_for_dialogue_query() -> None
             ),
         ]
     )
-    query = Query(
+    query = make_query(
         query_id="q1",
         entity="user",
         attribute="dialogue",
@@ -71,7 +71,7 @@ def test_dense_retrieval_expands_structured_fact_with_support_text() -> None:
     policy = DenseRetrievalMemoryPolicy(encoder=FakeDenseEncoder())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="support-target",
                 entity="user",
                 attribute="dialogue",
@@ -79,7 +79,7 @@ def test_dense_retrieval_expands_structured_fact_with_support_text() -> None:
                 timestamp=0,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="fact-target",
                 entity="user",
                 attribute="venue",
@@ -92,7 +92,7 @@ def test_dense_retrieval_expands_structured_fact_with_support_text() -> None:
                     "support_text": "I redeemed a $5 coupon on coffee creamer at Target.",
                 },
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="fact-other",
                 entity="user",
                 attribute="venue",
@@ -106,7 +106,7 @@ def test_dense_retrieval_expands_structured_fact_with_support_text() -> None:
             ),
         ]
     )
-    query = Query(
+    query = make_query(
         query_id="q2",
         entity="user",
         attribute="venue",
@@ -123,10 +123,10 @@ def test_dense_retrieval_expands_structured_fact_with_support_text() -> None:
 
 
 def test_mem0_updates_active_state_in_place_for_newer_fact() -> None:
-    policy = Mem0MemoryPolicy(encoder=FakeDenseEncoder())
+    policy = mem0_policy(encoder=FakeDenseEncoder())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="old-support",
                 entity="user",
                 attribute="dialogue",
@@ -134,7 +134,7 @@ def test_mem0_updates_active_state_in_place_for_newer_fact() -> None:
                 timestamp=1,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="old-fact",
                 entity="user",
                 attribute="home_city",
@@ -147,7 +147,7 @@ def test_mem0_updates_active_state_in_place_for_newer_fact() -> None:
                     "support_text": "I live in Boston.",
                 },
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="new-support",
                 entity="user",
                 attribute="dialogue",
@@ -155,7 +155,7 @@ def test_mem0_updates_active_state_in_place_for_newer_fact() -> None:
                 timestamp=2,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="new-fact",
                 entity="user",
                 attribute="home_city",
@@ -170,7 +170,7 @@ def test_mem0_updates_active_state_in_place_for_newer_fact() -> None:
             ),
         ]
     )
-    query = Query(
+    query = make_query(
         query_id="q3",
         entity="user",
         attribute="home_city",
@@ -190,10 +190,10 @@ def test_mem0_updates_active_state_in_place_for_newer_fact() -> None:
 
 
 def test_mem0_delete_removes_matching_active_memory() -> None:
-    policy = Mem0MemoryPolicy(encoder=FakeDenseEncoder())
+    policy = mem0_policy(encoder=FakeDenseEncoder())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="fact",
                 entity="user",
                 attribute="home_city",
@@ -205,7 +205,7 @@ def test_mem0_delete_removes_matching_active_memory() -> None:
                     "support_text": "I live in Boston.",
                 },
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="delete",
                 entity="user",
                 attribute="home_city",
@@ -247,9 +247,9 @@ def test_mem0_updates_same_key_even_when_dense_neighbor_window_misses_it() -> No
                 return (10.0, 0.0)
             return (0.0, 0.0)
 
-    policy = Mem0MemoryPolicy(encoder=SkewedEncoder(), write_top_k=2)
+    policy = mem0_policy(encoder=SkewedEncoder(), write_top_k=2)
     updates = [
-        MemoryEntry(
+        make_record(
             entry_id="old",
             entity="user",
             attribute="home_city",
@@ -260,7 +260,7 @@ def test_mem0_updates_same_key_even_when_dense_neighbor_window_misses_it() -> No
         )
     ]
     updates.extend(
-        MemoryEntry(
+        make_record(
             entry_id=f"d{idx}",
             entity=f"other{idx}",
             attribute=f"other{idx}",
@@ -272,7 +272,7 @@ def test_mem0_updates_same_key_even_when_dense_neighbor_window_misses_it() -> No
         for idx in range(5)
     )
     updates.append(
-        MemoryEntry(
+        make_record(
             entry_id="new",
             entity="user",
             attribute="home_city",

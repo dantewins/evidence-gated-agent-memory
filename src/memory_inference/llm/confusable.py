@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Dict, Sequence
 
+from memory_inference.domain.memory import MemoryRecord
+from memory_inference.domain.query import RuntimeQuery
 from memory_inference.llm.base import BaseReasoner
-from memory_inference.types import MemoryEntry, Query
 
 
 class ConfusableReasoner(BaseReasoner):
@@ -13,7 +14,7 @@ class ConfusableReasoner(BaseReasoner):
     by distractors and contradictions. Tiebreaker: most recent entry.
     """
 
-    def answer(self, query: Query, context: Sequence[MemoryEntry]) -> str:
+    def answer(self, query: RuntimeQuery, context: Sequence[MemoryRecord]) -> str:
         if not context:
             return "UNKNOWN"
 

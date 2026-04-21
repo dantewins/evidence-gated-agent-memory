@@ -1,16 +1,18 @@
+from memory_inference.domain.memory import MemoryRecord
+from memory_inference.domain.query import RuntimeQuery
 from memory_inference.llm.confusable import ConfusableReasoner
-from memory_inference.types import MemoryEntry, Query
+from tests.factories import make_query, make_record
 
 
-def _entry(entry_id: str, entity: str, attribute: str, value: str, ts: int) -> MemoryEntry:
-    return MemoryEntry(
+def _entry(entry_id: str, entity: str, attribute: str, value: str, ts: int) -> MemoryRecord:
+    return make_record(
         entry_id=entry_id, entity=entity, attribute=attribute,
         value=value, timestamp=ts, session_id="s",
     )
 
 
-def _query(entity: str, attribute: str, answer: str) -> Query:
-    return Query(
+def _query(entity: str, attribute: str, answer: str) -> RuntimeQuery:
+    return make_query(
         query_id="q", entity=entity, attribute=attribute,
         question="?", answer=answer, timestamp=99, session_id="s",
     )

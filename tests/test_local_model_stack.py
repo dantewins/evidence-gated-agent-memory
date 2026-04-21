@@ -3,11 +3,15 @@ import json
 
 import pytest
 
-from memory_inference.benchmarks.longmemeval_preprocess import preprocess_longmemeval
-from memory_inference.benchmarks.longmemeval_preprocess import load_preprocessed_longmemeval
-from memory_inference.benchmarks.locomo_preprocess import load_preprocessed_locomo, preprocess_locomo
 from memory_inference.cli import main as cli_main
-from memory_inference.experiment_registry import policy_factory_by_name
+from memory_inference.datasets.preprocessing import (
+    load_preprocessed_locomo,
+    load_preprocessed_longmemeval,
+    preprocess_locomo,
+    preprocess_longmemeval,
+)
+from memory_inference.domain.memory import MemoryRecord
+from memory_inference.domain.query import RuntimeQuery
 from memory_inference.llm.base import BaseReasoner
 from memory_inference.llm.cache import ResponseCache, cache_key
 from memory_inference.llm.fixed_prompt_reader import FixedPromptReader
@@ -15,17 +19,18 @@ from memory_inference.llm.local_config import LocalModelConfig
 from memory_inference.llm.local_hf_reasoner import LocalHFReasoner
 from memory_inference.llm.prompting import build_reasoning_prompt, render_prompt
 from memory_inference.llm.token_accounting import TokenUsage, count_tokens
-from memory_inference.results import build_manifest
-from memory_inference.types import MemoryEntry, Query
+from memory_inference.evaluation.manifests import build_manifest
+from memory_inference.orchestration.presets import policy_factory_by_name
+from tests.factories import make_query, make_record
 
 
 class DummyReasoner(BaseReasoner):
-    def answer(self, query: Query, context):
+    def answer(self, query: RuntimeQuery, context):
         return "Boston"
 
 
-def _query() -> Query:
-    return Query(
+def _query() -> RuntimeQuery:
+    return make_query(
         query_id="q1",
         entity="user_a",
         attribute="home_city",
@@ -36,9 +41,9 @@ def _query() -> Query:
     )
 
 
-def _context() -> list[MemoryEntry]:
+def _context() -> list[MemoryRecord]:
     return [
-        MemoryEntry(
+        make_record(
             entry_id="e1",
             entity="user_a",
             attribute="home_city",
@@ -216,12 +221,12 @@ def test_preprocess_longmemeval_writes_cached_json(tmp_path) -> None:
     source = tmp_path / "source.json"
     output = tmp_path / "processed.json"
     source.write_text(json.dumps(_raw_longmemeval_payload()))
-    batches = preprocess_longmemeval(source, output)
-    assert len(batches) == 1
+    dataset = preprocess_longmemeval(source, output)
+    assert dataset.total_contexts == 1
     payload = json.loads(output.read_text())
-    assert payload["records"][0]["batch"]["queries"][0]["attribute"] == "home_city"
+    assert payload["records"][0]["cases"][0]["runtime_query"]["attribute"] == "home_city"
     reloaded = load_preprocessed_longmemeval(output)
-    assert reloaded[0].queries[0].answer == "Boston"
+    assert reloaded.records[0].cases[0].eval_target.gold_answer == "Boston"
 
 
 def test_cli_preprocess_longmemeval(tmp_path) -> None:
@@ -236,12 +241,12 @@ def test_preprocess_locomo_writes_cached_json(tmp_path) -> None:
     source = tmp_path / "locomo_source.json"
     output = tmp_path / "locomo_processed.json"
     source.write_text(json.dumps(_raw_locomo_payload()))
-    batches = preprocess_locomo(source, output)
-    assert len(batches) == 1
+    dataset = preprocess_locomo(source, output)
+    assert dataset.total_contexts == 1
     payload = json.loads(output.read_text())
-    assert payload["records"][0]["batch"]["queries"][0]["attribute"] == "employer"
+    assert payload["records"][0]["cases"][0]["runtime_query"]["attribute"] == "employer"
     reloaded = load_preprocessed_locomo(output)
-    assert reloaded[0].queries[0].answer == "Google"
+    assert reloaded.records[0].cases[0].eval_target.gold_answer == "Google"
 
 
 def test_cli_preprocess_locomo(tmp_path) -> None:

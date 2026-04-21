@@ -4,10 +4,10 @@ import dataclasses
 import uuid
 from typing import List, Optional, Set
 
-from memory_inference.consolidation.consolidation_types import UpdateType
-from memory_inference.consolidation.revision_types import RevisionOp
+from memory_inference.domain.enums import UpdateType
+from memory_inference.domain.enums import RevisionOp
+from memory_inference.domain.memory import MemoryRecord
 from memory_inference.llm.consolidator_base import BaseConsolidator
-from memory_inference.types import MemoryEntry
 
 _DEFAULT_LOW_CONF = 0.2
 
@@ -19,7 +19,7 @@ class MockConsolidator(BaseConsolidator):
         super().__init__()
         self.low_confidence_threshold = low_confidence_threshold
 
-    def classify_update(self, new_entry: MemoryEntry, existing: MemoryEntry) -> UpdateType:
+    def classify_update(self, new_entry: MemoryRecord, existing: MemoryRecord) -> UpdateType:
         self.total_calls += 1
         if new_entry.value == existing.value:
             return UpdateType.REINFORCEMENT
@@ -27,7 +27,7 @@ class MockConsolidator(BaseConsolidator):
             return UpdateType.SUPERSESSION
         return UpdateType.CONFLICT  # equal or older timestamps with different values
 
-    def merge_entries(self, entries: List[MemoryEntry]) -> MemoryEntry:
+    def merge_entries(self, entries: List[MemoryRecord]) -> MemoryRecord:
         self.total_calls += 1
         best = max(entries, key=lambda e: e.confidence)
         merged_value = " | ".join(sorted({e.value for e in entries}))
@@ -39,17 +39,17 @@ class MockConsolidator(BaseConsolidator):
 
     def extract_facts(
         self, text: str, entity: str, session_id: str, timestamp: int
-    ) -> List[MemoryEntry]:
+    ) -> List[MemoryRecord]:
         """Parse semicolon-separated key=value pairs from text."""
         self.total_calls += 1
-        facts: List[MemoryEntry] = []
+        facts: List[MemoryRecord] = []
         for part in text.split(";"):
             part = part.strip()
             if "=" in part:
                 k, _, v = part.partition("=")
                 facts.append(
-                    MemoryEntry(
-                        entry_id=str(uuid.uuid4()),
+                    MemoryRecord(
+                        record_id=str(uuid.uuid4()),
                         entity=entity,
                         attribute=k.strip(),
                         value=v.strip(),
@@ -65,8 +65,8 @@ class MockConsolidator(BaseConsolidator):
 
     def classify_revision(
         self,
-        new_entry: MemoryEntry,
-        existing: Optional[MemoryEntry],
+        new_entry: MemoryRecord,
+        existing: Optional[MemoryRecord],
         prior_values: Optional[Set[str]] = None,
     ) -> RevisionOp:
         """Deterministic revision classification for unit tests.

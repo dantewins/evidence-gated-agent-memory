@@ -5,11 +5,12 @@ import re
 import time
 from typing import Any, Optional, Sequence
 
+from memory_inference.domain.memory import MemoryRecord
+from memory_inference.domain.query import RuntimeQuery
 from memory_inference.llm.base import BaseReasoner, ReasonerTrace
 from memory_inference.llm.cache import ResponseCache, cache_key
 from memory_inference.llm.local_config import LocalModelConfig
 from memory_inference.llm.prompting import build_reasoning_prompt, render_prompt
-from memory_inference.types import MemoryEntry, Query
 
 
 class LocalHFReasoner(BaseReasoner):
@@ -22,10 +23,14 @@ class LocalHFReasoner(BaseReasoner):
         self._torch: Any = None
         self._cache = ResponseCache(config.cache_dir) if config.cache_dir is not None else None
 
-    def answer(self, query: Query, context: Sequence[MemoryEntry]) -> str:
+    def answer(self, query: RuntimeQuery, context: Sequence[MemoryRecord]) -> str:
         return self.answer_with_trace(query, context).answer
 
-    def answer_with_trace(self, query: Query, context: Sequence[MemoryEntry]) -> ReasonerTrace:
+    def answer_with_trace(
+        self,
+        query: RuntimeQuery,
+        context: Sequence[MemoryRecord],
+    ) -> ReasonerTrace:
         package = build_reasoning_prompt(
             query,
             context,

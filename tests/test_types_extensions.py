@@ -1,8 +1,8 @@
-from memory_inference.types import MemoryEntry, Query
+from tests.factories import make_query, make_record
 
 
 def test_memory_entry_has_default_importance() -> None:
-    entry = MemoryEntry(
+    entry = make_record(
         entry_id="1", entity="u", attribute="a", value="v",
         timestamp=1, session_id="s",
     )
@@ -11,7 +11,7 @@ def test_memory_entry_has_default_importance() -> None:
 
 
 def test_query_has_default_multi_attributes() -> None:
-    query = Query(
+    query = make_query(
         query_id="q1", entity="u", attribute="a",
         question="?", answer="v", timestamp=2, session_id="s",
     )
@@ -19,7 +19,7 @@ def test_query_has_default_multi_attributes() -> None:
 
 
 def test_query_multi_attributes_stored() -> None:
-    query = Query(
+    query = make_query(
         query_id="q1", entity="u", attribute="a",
         question="?", answer="v", timestamp=2, session_id="s",
         multi_attributes=("b", "c"),
@@ -28,7 +28,7 @@ def test_query_multi_attributes_stored() -> None:
 
 
 def test_access_count_is_mutable() -> None:
-    entry = MemoryEntry(
+    entry = make_record(
         entry_id="1", entity="u", attribute="a", value="v",
         timestamp=1, session_id="s",
     )
@@ -37,7 +37,7 @@ def test_access_count_is_mutable() -> None:
 
 
 def test_multi_attributes_is_tuple_type() -> None:
-    query = Query(
+    query = make_query(
         query_id="q1", entity="u", attribute="a",
         question="?", answer="v", timestamp=2, session_id="s",
         multi_attributes=("b", "c"),

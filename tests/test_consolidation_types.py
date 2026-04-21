@@ -1,4 +1,4 @@
-from memory_inference.consolidation.consolidation_types import UpdateType
+from memory_inference.domain.enums import UpdateType
 
 
 def test_update_type_has_four_variants() -> None:

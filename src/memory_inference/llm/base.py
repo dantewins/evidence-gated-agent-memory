@@ -1,25 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 import time
-from typing import Dict, Optional, Sequence
+from typing import Sequence
 
-from memory_inference.types import MemoryEntry, Query
+from memory_inference.domain.memory import MemoryRecord
+from memory_inference.domain.query import RuntimeQuery
+from memory_inference.domain.results import ReaderTrace
 
-
-@dataclass(slots=True)
-class ReasonerTrace:
-    answer: str
-    model_id: str = "unknown"
-    prompt: str = ""
-    prompt_tokens: int = 0
-    completion_tokens: int = 0
-    total_tokens: int = 0
-    latency_ms: float = 0.0
-    cache_hit: bool = False
-    raw_output: str = ""
-    metadata: Dict[str, str] = field(default_factory=dict)
+ReasonerTrace = ReaderTrace
 
 
 class BaseReasoner(ABC):
@@ -30,10 +19,14 @@ class BaseReasoner(ABC):
     """
 
     @abstractmethod
-    def answer(self, query: Query, context: Sequence[MemoryEntry]) -> str:
+    def answer(self, query: RuntimeQuery, context: Sequence[MemoryRecord]) -> str:
         raise NotImplementedError
 
-    def answer_with_trace(self, query: Query, context: Sequence[MemoryEntry]) -> ReasonerTrace:
+    def answer_with_trace(
+        self,
+        query: RuntimeQuery,
+        context: Sequence[MemoryRecord],
+    ) -> ReasonerTrace:
         started = time.perf_counter()
         answer = self.answer(query, context)
         latency_ms = (time.perf_counter() - started) * 1000.0

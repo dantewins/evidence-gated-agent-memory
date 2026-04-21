@@ -1,10 +1,10 @@
-from memory_inference.consolidation.append_only import AppendOnlyMemoryPolicy
-from memory_inference.consolidation.offline_delta_v2 import OfflineDeltaConsolidationPolicyV2
-from memory_inference.consolidation.recency_salience import RecencySalienceMemoryPolicy
+from memory_inference.memory.policies import AppendOnlyMemoryPolicy
+from memory_inference.memory.policies import RecencySalienceMemoryPolicy
+from memory_inference.evaluation.scoring import answers_match
 from memory_inference.llm.prompting import build_reasoning_prompt
 from memory_inference.llm.mock_consolidator import MockConsolidator
-from memory_inference.open_ended_eval import answers_match
-from memory_inference.types import MemoryEntry, Query
+from memory_inference.memory.policies import offline_delta_v2_policy
+from tests.factories import make_query, make_record
 
 
 def test_answers_match_normalizes_short_span_predictions() -> None:
@@ -20,7 +20,7 @@ def test_append_only_uses_lexical_retrieval_for_dialogue_queries() -> None:
     policy = AppendOnlyMemoryPolicy()
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="1",
                 entity="user",
                 attribute="dialogue",
@@ -28,7 +28,7 @@ def test_append_only_uses_lexical_retrieval_for_dialogue_queries() -> None:
                 timestamp=0,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="2",
                 entity="user",
                 attribute="dialogue",
@@ -38,7 +38,7 @@ def test_append_only_uses_lexical_retrieval_for_dialogue_queries() -> None:
             ),
         ]
     )
-    query = Query(
+    query = make_query(
         query_id="q",
         entity="user",
         attribute="dialogue",
@@ -53,7 +53,7 @@ def test_append_only_uses_lexical_retrieval_for_dialogue_queries() -> None:
 
 
 def test_prompt_includes_source_metadata() -> None:
-    query = Query(
+    query = make_query(
         query_id="q",
         entity="Caroline",
         attribute="dialogue",
@@ -65,7 +65,7 @@ def test_prompt_includes_source_metadata() -> None:
     prompt = build_reasoning_prompt(
         query,
         [
-            MemoryEntry(
+            make_record(
                 entry_id="1",
                 entity="Caroline",
                 attribute="dialogue",
@@ -81,7 +81,7 @@ def test_prompt_includes_source_metadata() -> None:
 
 
 def test_prompt_includes_structured_fact_support_text() -> None:
-    query = Query(
+    query = make_query(
         query_id="q-support",
         entity="user",
         attribute="created_name",
@@ -93,7 +93,7 @@ def test_prompt_includes_structured_fact_support_text() -> None:
     prompt = build_reasoning_prompt(
         query,
         [
-            MemoryEntry(
+            make_record(
                 entry_id="1",
                 entity="user",
                 attribute="created_name",
@@ -112,10 +112,10 @@ def test_prompt_includes_structured_fact_support_text() -> None:
 
 
 def test_offline_delta_open_ended_retrieval_prefers_current_scoped_entries() -> None:
-    policy = OfflineDeltaConsolidationPolicyV2(consolidator=MockConsolidator())
+    policy = offline_delta_v2_policy(consolidator=MockConsolidator())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="1",
                 entity="user",
                 attribute="dialogue",
@@ -124,7 +124,7 @@ def test_offline_delta_open_ended_retrieval_prefers_current_scoped_entries() -> 
                 session_id="s",
                 scope="session_1",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="2",
                 entity="user",
                 attribute="dialogue",
@@ -133,7 +133,7 @@ def test_offline_delta_open_ended_retrieval_prefers_current_scoped_entries() -> 
                 session_id="s",
                 scope="session_1",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="3",
                 entity="user",
                 attribute="dialogue",
@@ -145,7 +145,7 @@ def test_offline_delta_open_ended_retrieval_prefers_current_scoped_entries() -> 
         ]
     )
     policy.maybe_consolidate()
-    query = Query(
+    query = make_query(
         query_id="q",
         entity="user",
         attribute="dialogue",
@@ -161,10 +161,10 @@ def test_offline_delta_open_ended_retrieval_prefers_current_scoped_entries() -> 
 
 
 def test_offline_delta_open_ended_retrieval_keeps_earlier_turns_within_scope() -> None:
-    policy = OfflineDeltaConsolidationPolicyV2(consolidator=MockConsolidator())
+    policy = offline_delta_v2_policy(consolidator=MockConsolidator())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="1",
                 entity="user",
                 attribute="dialogue",
@@ -173,7 +173,7 @@ def test_offline_delta_open_ended_retrieval_keeps_earlier_turns_within_scope() -
                 session_id="s",
                 scope="session_1",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="2",
                 entity="user",
                 attribute="dialogue",
@@ -185,7 +185,7 @@ def test_offline_delta_open_ended_retrieval_keeps_earlier_turns_within_scope() -
         ]
     )
     policy.maybe_consolidate()
-    query = Query(
+    query = make_query(
         query_id="q2",
         entity="user",
         attribute="dialogue",
@@ -200,7 +200,7 @@ def test_offline_delta_open_ended_retrieval_keeps_earlier_turns_within_scope() -
 
 def test_recency_salience_can_diverge_from_append_only_on_equal_lexical_match() -> None:
     entries = [
-        MemoryEntry(
+        make_record(
             entry_id="older",
             entity="user",
             attribute="dialogue",
@@ -210,7 +210,7 @@ def test_recency_salience_can_diverge_from_append_only_on_equal_lexical_match() 
             importance=1.7,
             confidence=0.95,
         ),
-        MemoryEntry(
+        make_record(
             entry_id="newer",
             entity="user",
             attribute="dialogue",
@@ -221,7 +221,7 @@ def test_recency_salience_can_diverge_from_append_only_on_equal_lexical_match() 
             confidence=0.6,
         ),
     ]
-    query = Query(
+    query = make_query(
         query_id="q3",
         entity="user",
         attribute="dialogue",
@@ -244,7 +244,7 @@ def test_recency_salience_can_diverge_from_append_only_on_equal_lexical_match() 
 
 def test_policy_shortlist_keeps_salient_older_open_ended_evidence() -> None:
     entries = [
-        MemoryEntry(
+        make_record(
             entry_id="target",
             entity="user",
             attribute="dialogue",
@@ -256,7 +256,7 @@ def test_policy_shortlist_keeps_salient_older_open_ended_evidence() -> None:
         )
     ]
     entries.extend(
-        MemoryEntry(
+        make_record(
             entry_id=f"recent-{idx}",
             entity="user",
             attribute="dialogue",
@@ -268,7 +268,7 @@ def test_policy_shortlist_keeps_salient_older_open_ended_evidence() -> None:
         )
         for idx in range(1, 71)
     )
-    query = Query(
+    query = make_query(
         query_id="q4",
         entity="user",
         attribute="dialogue",
@@ -294,7 +294,7 @@ def test_append_only_reranks_structured_fact_queries_with_support_text() -> None
     policy = AppendOnlyMemoryPolicy()
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="support-target",
                 entity="user",
                 attribute="dialogue",
@@ -302,7 +302,7 @@ def test_append_only_reranks_structured_fact_queries_with_support_text() -> None
                 timestamp=0,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="fact-target",
                 entity="user",
                 attribute="venue",
@@ -315,7 +315,7 @@ def test_append_only_reranks_structured_fact_queries_with_support_text() -> None
                     "support_text": "I redeemed a $5 coupon on coffee creamer at Target.",
                 },
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="support-other",
                 entity="user",
                 attribute="dialogue",
@@ -323,7 +323,7 @@ def test_append_only_reranks_structured_fact_queries_with_support_text() -> None
                 timestamp=5,
                 session_id="s",
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="fact-other",
                 entity="user",
                 attribute="venue",
@@ -338,7 +338,7 @@ def test_append_only_reranks_structured_fact_queries_with_support_text() -> None
             ),
         ]
     )
-    query = Query(
+    query = make_query(
         query_id="q-venue",
         entity="user",
         attribute="venue",

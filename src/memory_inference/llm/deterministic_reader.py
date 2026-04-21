@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from memory_inference.consolidation.revision_types import QueryMode
+from memory_inference.domain.enums import QueryMode
+from memory_inference.domain.memory import MemoryRecord
+from memory_inference.domain.query import RuntimeQuery
+from memory_inference.evaluation.metrics import ABSTAIN_TOKEN
 from memory_inference.llm.base import BaseReasoner
-from memory_inference.metrics import ABSTAIN_TOKEN
-from memory_inference.types import MemoryEntry, Query
 
 
 class DeterministicValidityReader(BaseReasoner):
     """Deterministic reader that respects query mode and abstention."""
 
-    def answer(self, query: Query, context: Sequence[MemoryEntry]) -> str:
+    def answer(self, query: RuntimeQuery, context: Sequence[MemoryRecord]) -> str:
         candidates = [
             entry
             for entry in context

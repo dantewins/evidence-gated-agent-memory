@@ -3,9 +3,9 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import List, Optional, Set
 
-from memory_inference.consolidation.consolidation_types import UpdateType
-from memory_inference.consolidation.revision_types import RevisionOp
-from memory_inference.types import MemoryEntry
+from memory_inference.domain.enums import UpdateType
+from memory_inference.domain.enums import RevisionOp
+from memory_inference.domain.memory import MemoryRecord
 
 
 class BaseConsolidator(ABC):
@@ -19,16 +19,16 @@ class BaseConsolidator(ABC):
         self.total_calls: int = 0
 
     # ------------------------------------------------------------------ #
-    # Legacy interface (UpdateType) — kept for backward compatibility      #
+    # Update classification interface                                      #
     # ------------------------------------------------------------------ #
 
     @abstractmethod
-    def classify_update(self, new_entry: MemoryEntry, existing: MemoryEntry) -> UpdateType:
+    def classify_update(self, new_entry: MemoryRecord, existing: MemoryRecord) -> UpdateType:
         """Classify how new_entry relates to existing for the same key."""
         raise NotImplementedError
 
     @abstractmethod
-    def merge_entries(self, entries: List[MemoryEntry]) -> MemoryEntry:
+    def merge_entries(self, entries: List[MemoryRecord]) -> MemoryRecord:
         """Merge multiple reinforcement entries into one canonical entry.
 
         entries must be non-empty.
@@ -38,8 +38,8 @@ class BaseConsolidator(ABC):
     @abstractmethod
     def extract_facts(
         self, text: str, entity: str, session_id: str, timestamp: int
-    ) -> List[MemoryEntry]:
-        """Extract structured MemoryEntry objects from a raw text turn."""
+    ) -> List[MemoryRecord]:
+        """Extract structured memory records from a raw text turn."""
         raise NotImplementedError
 
     # ------------------------------------------------------------------ #
@@ -49,8 +49,8 @@ class BaseConsolidator(ABC):
     @abstractmethod
     def classify_revision(
         self,
-        new_entry: MemoryEntry,
-        existing: Optional[MemoryEntry],
+        new_entry: MemoryRecord,
+        existing: Optional[MemoryRecord],
         prior_values: Optional[Set[str]] = None,
     ) -> RevisionOp:
         """Classify the revision operation for new_entry relative to existing.

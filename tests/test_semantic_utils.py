@@ -4,7 +4,7 @@ import warnings
 
 import pytest
 
-from memory_inference.consolidation.semantic_utils import TransformerDenseEncoder
+from memory_inference.memory.retrieval.semantic import TransformerDenseEncoder
 
 
 class _DummyTokenizer:

@@ -1,10 +1,10 @@
-from memory_inference.consolidation.mem0_variants import (
-    Mem0AllFeaturesPolicy,
-    Mem0ArchiveConflictPolicy,
-    Mem0HistoryAwarePolicy,
+from memory_inference.domain.enums import QueryMode
+from memory_inference.memory.policies import (
+    mem0_all_features_policy,
+    mem0_archive_conflict_policy,
+    mem0_history_aware_policy,
 )
-from memory_inference.consolidation.revision_types import QueryMode
-from memory_inference.types import MemoryEntry, Query
+from tests.factories import make_query, make_record
 
 
 class FakeDenseEncoder:
@@ -32,10 +32,10 @@ class FakeDenseEncoder:
 
 
 def test_mem0_archive_conflict_archives_superseded_state() -> None:
-    policy = Mem0ArchiveConflictPolicy(encoder=FakeDenseEncoder())
+    policy = mem0_archive_conflict_policy(encoder=FakeDenseEncoder())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="old",
                 entity="user",
                 attribute="employer",
@@ -44,7 +44,7 @@ def test_mem0_archive_conflict_archives_superseded_state() -> None:
                 session_id="s",
                 metadata={"memory_kind": "state"},
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="new",
                 entity="user",
                 attribute="employer",
@@ -62,7 +62,7 @@ def test_mem0_archive_conflict_archives_superseded_state() -> None:
     assert "Google" in archived_values
     assert "Meta" in active_values
 
-    current_state_query = Query(
+    current_state_query = make_query(
         query_id="current-q",
         entity="user",
         attribute="employer",
@@ -80,10 +80,10 @@ def test_mem0_archive_conflict_archives_superseded_state() -> None:
 
 
 def test_mem0_history_aware_prefers_older_semantic_match_for_history_query() -> None:
-    policy = Mem0HistoryAwarePolicy(encoder=FakeDenseEncoder())
+    policy = mem0_history_aware_policy(encoder=FakeDenseEncoder())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="old",
                 entity="Alice",
                 attribute="employer",
@@ -92,7 +92,7 @@ def test_mem0_history_aware_prefers_older_semantic_match_for_history_query() -> 
                 session_id="s",
                 metadata={"memory_kind": "state"},
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="new",
                 entity="Alice",
                 attribute="employer",
@@ -104,7 +104,7 @@ def test_mem0_history_aware_prefers_older_semantic_match_for_history_query() -> 
         ]
     )
 
-    query = Query(
+    query = make_query(
         query_id="history-q",
         entity="Alice",
         attribute="employer",
@@ -121,10 +121,10 @@ def test_mem0_history_aware_prefers_older_semantic_match_for_history_query() -> 
 
 
 def test_mem0_all_features_surfaces_conflicts_for_conflict_aware_queries() -> None:
-    policy = Mem0AllFeaturesPolicy(encoder=FakeDenseEncoder())
+    policy = mem0_all_features_policy(encoder=FakeDenseEncoder())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="boston",
                 entity="user",
                 attribute="home_city",
@@ -133,7 +133,7 @@ def test_mem0_all_features_surfaces_conflicts_for_conflict_aware_queries() -> No
                 session_id="s",
                 metadata={"memory_kind": "state"},
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="seattle",
                 entity="user",
                 attribute="home_city",
@@ -145,7 +145,7 @@ def test_mem0_all_features_surfaces_conflicts_for_conflict_aware_queries() -> No
         ]
     )
 
-    query = Query(
+    query = make_query(
         query_id="conflict-q",
         entity="user",
         attribute="home_city",
@@ -164,10 +164,10 @@ def test_mem0_all_features_surfaces_conflicts_for_conflict_aware_queries() -> No
 
 
 def test_mem0_archive_conflict_records_out_of_order_conflicts() -> None:
-    policy = Mem0ArchiveConflictPolicy(encoder=FakeDenseEncoder())
+    policy = mem0_archive_conflict_policy(encoder=FakeDenseEncoder())
     policy.ingest(
         [
-            MemoryEntry(
+            make_record(
                 entry_id="newer",
                 entity="user",
                 attribute="home_city",
@@ -176,7 +176,7 @@ def test_mem0_archive_conflict_records_out_of_order_conflicts() -> None:
                 session_id="s",
                 metadata={"memory_kind": "state"},
             ),
-            MemoryEntry(
+            make_record(
                 entry_id="older",
                 entity="user",
                 attribute="home_city",

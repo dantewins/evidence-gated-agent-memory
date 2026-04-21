@@ -1,4 +1,4 @@
-from memory_inference.benchmarks.conversational_salience import estimate_confidence, estimate_importance
+from memory_inference.annotation.salience import estimate_confidence, estimate_importance
 
 
 def test_personal_fact_scores_higher_than_generic_help_request() -> None:

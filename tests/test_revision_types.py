@@ -1,4 +1,4 @@
-from memory_inference.consolidation.revision_types import MemoryStatus, QueryMode, RevisionOp
+from memory_inference.domain.enums import MemoryStatus, QueryMode, RevisionOp
 
 
 def test_memory_status_has_all_required_values() -> None:

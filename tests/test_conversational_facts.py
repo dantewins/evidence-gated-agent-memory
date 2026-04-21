@@ -1,7 +1,5 @@
-from memory_inference.benchmarks.conversational_facts import (
-    extract_structured_facts,
-    infer_query_attributes,
-)
+from memory_inference.annotation.fact_extractor import extract_structured_facts
+from memory_inference.annotation.query_intent import infer_query_attributes
 
 
 def test_extract_structured_facts_covers_benchmark_event_patterns() -> None:

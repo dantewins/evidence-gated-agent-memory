@@ -1,21 +1,23 @@
-"""Tests for validity-aware extensions to MemoryEntry and Query."""
-from memory_inference.consolidation.revision_types import MemoryStatus, QueryMode
-from memory_inference.types import MemoryEntry, Query
+"""Tests for validity-aware memory and query domain fields."""
+from memory_inference.domain.enums import MemoryStatus, QueryMode
+from memory_inference.domain.memory import MemoryRecord
+from memory_inference.domain.query import RuntimeQuery
+from tests.factories import make_query, make_record
 
 
-def _base_entry(**kwargs) -> MemoryEntry:
+def _base_entry(**kwargs) -> MemoryRecord:
     defaults = dict(entry_id="e1", entity="u", attribute="a", value="v", timestamp=1, session_id="s")
     defaults.update(kwargs)
-    return MemoryEntry(**defaults)
+    return make_record(**defaults)
 
 
-def _base_query(**kwargs) -> Query:
+def _base_query(**kwargs) -> RuntimeQuery:
     defaults = dict(query_id="q1", entity="u", attribute="a", question="?", answer="v", timestamp=2, session_id="s")
     defaults.update(kwargs)
-    return Query(**defaults)
+    return make_query(**defaults)
 
 
-# MemoryEntry new fields
+# MemoryRecord fields
 
 def test_memory_entry_default_status_is_active() -> None:
     e = _base_entry()
@@ -60,7 +62,7 @@ def test_memory_entry_text_unchanged_by_new_fields() -> None:
     assert "attribute=a" in text
 
 
-# Query new fields
+# RuntimeQuery fields
 
 def test_query_default_query_mode_is_current_state() -> None:
     q = _base_query()
