@@ -161,3 +161,7 @@ def _add_local_model_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--prompt-template-id", default="validity-v1")
     parser.add_argument("--trust-remote-code", action="store_true")
     parser.add_argument("--no-chat-template", action="store_true")
+
+
+if __name__ == "__main__":
+    main()
