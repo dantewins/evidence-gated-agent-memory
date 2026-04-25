@@ -94,6 +94,24 @@ def mem0_validity_guard_policy(
     )
 
 
+def odv2_mem0_hybrid_policy(
+    *,
+    consolidator,
+    encoder: DenseEncoder | None = None,
+    write_top_k: int = 10,
+    importance_threshold: float = 0.1,
+    support_history_limit: int = 3,
+) -> Mem0ValidityGuardPolicy:
+    return Mem0ValidityGuardPolicy(
+        name="odv2_mem0_hybrid",
+        consolidator=consolidator,
+        encoder=encoder,
+        write_top_k=write_top_k,
+        importance_threshold=importance_threshold,
+        support_history_limit=support_history_limit,
+    )
+
+
 def build_odv2_policy(
     *,
     name: str,
