@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import importlib.util
 import re
 import time
@@ -11,6 +12,14 @@ from memory_inference.llm.base import BaseReasoner, ReasonerTrace
 from memory_inference.llm.cache import ResponseCache, cache_key
 from memory_inference.llm.local_config import LocalModelConfig
 from memory_inference.llm.prompting import build_reasoning_prompt, render_prompt
+
+
+@dataclass(slots=True)
+class _PreparedPrompt:
+    index: int
+    rendered_prompt: str
+    cache_key_value: str
+    template_id: str
 
 
 class LocalHFReasoner(BaseReasoner):
@@ -31,73 +40,39 @@ class LocalHFReasoner(BaseReasoner):
         query: RuntimeQuery,
         context: Sequence[MemoryRecord],
     ) -> ReasonerTrace:
-        package = build_reasoning_prompt(
-            query,
-            context,
-            template_id=self.config.prompt_template_id,
-            system_prompt=self.config.system_prompt,
-        )
-        self._ensure_loaded()
-        rendered_prompt = render_prompt(
-            package,
-            tokenizer=self._tokenizer,
-            use_chat_template=self.config.use_chat_template,
-        )
-        cache_key_value = cache_key(
-            self.config.model_id,
-            package.template_id,
-            rendered_prompt,
-            str(self.config.max_new_tokens),
-            str(self.config.temperature),
-            str(self.config.top_p),
-            str(self.config.do_sample),
-            str(self.config.repetition_penalty),
-        )
-        if self._cache is not None:
-            cached = self._cache.load(cache_key_value)
-            if cached is not None:
-                cached.cache_hit = True
-                return cached
+        return self.answer_many_with_traces([query], [context])[0]
 
-        started = time.perf_counter()
-        encoded = self._tokenizer(
-            rendered_prompt,
-            return_tensors="pt",
-            truncation=True,
-            max_length=self.config.context_window,
-        )
-        prompt_tokens = int(encoded["input_ids"].shape[-1])
-        if hasattr(encoded, "to"):
-            encoded = encoded.to(self._model.device)
-        generated = self._model.generate(
-            **encoded,
-            **self._generate_kwargs(),
-        )
-        generated_ids = generated[0]
-        completion_ids = generated_ids[prompt_tokens:]
-        completion_text = self._decode_completion(completion_ids)
-        answer_text = self._extract_answer(completion_text, rendered_prompt)
-        completion_tokens = self._token_length(completion_ids)
-        latency_ms = (time.perf_counter() - started) * 1000.0
-        trace = ReasonerTrace(
-            answer=answer_text,
-            model_id=self.config.model_id,
-            prompt=rendered_prompt,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=prompt_tokens + completion_tokens,
-            latency_ms=latency_ms,
-            cache_hit=False,
-            raw_output=completion_text,
-            metadata={
-                "backend": self.config.backend,
-                "template_id": package.template_id,
-                "use_chat_template": str(self.config.use_chat_template),
-            },
-        )
-        if self._cache is not None:
-            self._cache.save(cache_key_value, trace)
-        return trace
+    def answer_many_with_traces(
+        self,
+        queries: Sequence[RuntimeQuery],
+        contexts: Sequence[Sequence[MemoryRecord]],
+    ) -> list[ReasonerTrace]:
+        if len(queries) != len(contexts):
+            raise ValueError(
+                f"Expected the same number of queries and contexts, got {len(queries)} and {len(contexts)}."
+            )
+        self._ensure_loaded()
+        prepared = [
+            self._prepare_prompt(index, query, context)
+            for index, (query, context) in enumerate(zip(queries, contexts))
+        ]
+        traces: list[ReasonerTrace | None] = [None] * len(prepared)
+        uncached: list[_PreparedPrompt] = []
+
+        for prompt in prepared:
+            cached = self._load_cached_trace(prompt.cache_key_value)
+            if cached is not None:
+                traces[prompt.index] = cached
+                continue
+            uncached.append(prompt)
+
+        if uncached:
+            for prompt, trace in zip(uncached, self._generate_missing_traces(uncached)):
+                traces[prompt.index] = trace
+                if self._cache is not None:
+                    self._cache.save(prompt.cache_key_value, trace)
+
+        return [trace for trace in traces if trace is not None]
 
     def _ensure_loaded(self) -> None:
         if self._model is not None and self._tokenizer is not None:
@@ -118,6 +93,8 @@ class LocalHFReasoner(BaseReasoner):
         )
         if self._tokenizer.pad_token_id is None and self._tokenizer.eos_token_id is not None:
             self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
+        if hasattr(self._tokenizer, "padding_side"):
+            self._tokenizer.padding_side = "left"
         self._model = AutoModelForCausalLM.from_pretrained(
             self.config.model_id,
             trust_remote_code=self.config.trust_remote_code,
@@ -222,3 +199,116 @@ class LocalHFReasoner(BaseReasoner):
             return "ABSTAIN"
         first_line = re.sub(r"^(Answer:|Response:|Final answer:)\s*", "", first_line, flags=re.IGNORECASE)
         return first_line.strip(" \"'`") or "UNKNOWN"
+
+    def _prepare_prompt(
+        self,
+        index: int,
+        query: RuntimeQuery,
+        context: Sequence[MemoryRecord],
+    ) -> _PreparedPrompt:
+        package = build_reasoning_prompt(
+            query,
+            context,
+            template_id=self.config.prompt_template_id,
+            system_prompt=self.config.system_prompt,
+        )
+        rendered_prompt = render_prompt(
+            package,
+            tokenizer=self._tokenizer,
+            use_chat_template=self.config.use_chat_template,
+        )
+        return _PreparedPrompt(
+            index=index,
+            rendered_prompt=rendered_prompt,
+            cache_key_value=cache_key(
+                self.config.model_id,
+                package.template_id,
+                rendered_prompt,
+                str(self.config.max_new_tokens),
+                str(self.config.temperature),
+                str(self.config.top_p),
+                str(self.config.do_sample),
+                str(self.config.repetition_penalty),
+            ),
+            template_id=package.template_id,
+        )
+
+    def _load_cached_trace(self, cache_key_value: str) -> ReasonerTrace | None:
+        if self._cache is None:
+            return None
+        cached = self._cache.load(cache_key_value)
+        if cached is None:
+            return None
+        cached.cache_hit = True
+        return cached
+
+    def _generate_missing_traces(self, prompts: Sequence[_PreparedPrompt]) -> list[ReasonerTrace]:
+        if not prompts:
+            return []
+        batch_size = max(1, self.config.inference_batch_size)
+        ordered = sorted(prompts, key=lambda prompt: len(prompt.rendered_prompt), reverse=True)
+        generated: dict[int, ReasonerTrace] = {}
+        for start in range(0, len(ordered), batch_size):
+            batch = ordered[start:start + batch_size]
+            for prompt, trace in zip(batch, self._generate_batch(batch)):
+                generated[prompt.index] = trace
+        return [generated[prompt.index] for prompt in prompts]
+
+    def _generate_batch(self, prompts: Sequence[_PreparedPrompt]) -> list[ReasonerTrace]:
+        assert self._tokenizer is not None
+        assert self._model is not None
+        assert self._torch is not None
+
+        rendered_prompts = [prompt.rendered_prompt for prompt in prompts]
+        encoded = self._tokenizer(
+            rendered_prompts,
+            return_tensors="pt",
+            padding=True,
+            pad_to_multiple_of=8 if self._using_cuda(self._torch) else None,
+            truncation=True,
+            max_length=self.config.context_window,
+        )
+        prompt_lengths = self._prompt_lengths(encoded["attention_mask"])
+        input_width = int(encoded["input_ids"].shape[-1])
+        if hasattr(encoded, "to"):
+            encoded = encoded.to(self._model.device)
+        started = time.perf_counter()
+        with self._torch.inference_mode():
+            generated = self._model.generate(
+                **encoded,
+                **self._generate_kwargs(),
+            )
+        per_query_latency_ms = ((time.perf_counter() - started) * 1000.0) / len(prompts)
+
+        traces: list[ReasonerTrace] = []
+        for prompt, prompt_tokens, generated_ids in zip(prompts, prompt_lengths, generated):
+            completion_ids = generated_ids[input_width:]
+            completion_text = self._decode_completion(completion_ids)
+            answer_text = self._extract_answer(completion_text, prompt.rendered_prompt)
+            completion_tokens = self._token_length(completion_ids)
+            traces.append(
+                ReasonerTrace(
+                    answer=answer_text,
+                    model_id=self.config.model_id,
+                    prompt=prompt.rendered_prompt,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    total_tokens=prompt_tokens + completion_tokens,
+                    latency_ms=per_query_latency_ms,
+                    cache_hit=False,
+                    raw_output=completion_text,
+                    metadata={
+                        "backend": self.config.backend,
+                        "template_id": prompt.template_id,
+                        "use_chat_template": str(self.config.use_chat_template),
+                        "batch_size": str(len(prompts)),
+                    },
+                )
+            )
+        return traces
+
+    def _prompt_lengths(self, attention_mask: Any) -> list[int]:
+        summed = attention_mask.sum(dim=1)
+        if hasattr(summed, "tolist"):
+            return [int(value) for value in summed.tolist()]
+        return [int(value) for value in summed]

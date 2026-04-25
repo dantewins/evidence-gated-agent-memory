@@ -10,6 +10,7 @@ export PYTHONPATH=src
 export HF_HUB_DISABLE_XET="${HF_HUB_DISABLE_XET:-1}"
 export HF_ENABLE_PARALLEL_LOADING="${HF_ENABLE_PARALLEL_LOADING:-true}"
 export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
+export INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-12}"
 
 # Download benchmark inputs if needed:
 #   curl -L https://huggingface.co/datasets/xiaowu0162/longmemeval-cleaned/resolve/main/longmemeval_s_cleaned.json -o data/longmemeval_s_cleaned.json
@@ -22,6 +23,7 @@ python -m memory_inference.cli longmemeval \
   --model-id Qwen/Qwen2.5-7B-Instruct \
   --device cuda \
   --dtype bfloat16 \
+  --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
   --policy strong_retrieval \
   --policy dense_retrieval \
   --policy mem0 \
@@ -40,6 +42,7 @@ python -m memory_inference.cli locomo \
   --model-id Qwen/Qwen2.5-7B-Instruct \
   --device cuda \
   --dtype bfloat16 \
+  --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
   --policy strong_retrieval \
   --policy dense_retrieval \
   --policy mem0 \

@@ -84,6 +84,7 @@ def build_reasoner(args: argparse.Namespace):
             LocalModelConfig(
                 model_id=args.model_id,
                 cache_dir=Path(args.cache_dir),
+                inference_batch_size=args.inference_batch_size,
                 max_new_tokens=args.max_new_tokens,
                 temperature=args.temperature,
                 top_p=args.top_p,
@@ -153,6 +154,7 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_local_model_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--inference-batch-size", type=int, default=8)
     parser.add_argument("--max-new-tokens", type=int, default=32)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)

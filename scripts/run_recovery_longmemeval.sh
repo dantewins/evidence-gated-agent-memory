@@ -9,6 +9,7 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-7B-Instruct}"
 DEVICE="${DEVICE:-cuda}"
 DTYPE="${DTYPE:-bfloat16}"
+INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-12}"
 LONGMEMEVAL_INPUT="${LONGMEMEVAL_INPUT:-data/longmemeval_s_cleaned.json}"
 
 COMMON_POLICIES=(
@@ -27,6 +28,7 @@ python -m memory_inference.cli longmemeval \
   --model-id "${MODEL_ID}" \
   --device "${DEVICE}" \
   --dtype "${DTYPE}" \
+  --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
   "${COMMON_POLICIES[@]}" \
   --cache-dir .cache/memory_inference_longmemeval_recovery \
   --output results/longmemeval_recovery.json

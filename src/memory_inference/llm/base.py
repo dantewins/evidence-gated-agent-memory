@@ -36,3 +36,17 @@ class BaseReasoner(ABC):
             raw_output=answer,
             latency_ms=latency_ms,
         )
+
+    def answer_many_with_traces(
+        self,
+        queries: Sequence[RuntimeQuery],
+        contexts: Sequence[Sequence[MemoryRecord]],
+    ) -> list[ReasonerTrace]:
+        if len(queries) != len(contexts):
+            raise ValueError(
+                f"Expected the same number of queries and contexts, got {len(queries)} and {len(contexts)}."
+            )
+        return [
+            self.answer_with_trace(query, context)
+            for query, context in zip(queries, contexts)
+        ]

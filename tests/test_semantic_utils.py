@@ -139,3 +139,46 @@ def test_transformer_dense_encoder_reuses_loaded_backend_across_instances(monkey
     assert len(auto_tokenizer_calls) == 1
     assert first._model is second._model
     assert first._tokenizer is second._tokenizer
+
+
+def test_transformer_dense_encoder_uses_bfloat16_on_cuda(monkeypatch) -> None:
+    auto_model_calls = []
+    logging_state = {"verbosity": 5}
+
+    class _CudaAutoModel:
+        @classmethod
+        def from_pretrained(cls, model_id, **kwargs):
+            auto_model_calls.append(kwargs)
+            return _DummyModel(), {
+                "unexpected_keys": ["embeddings.position_ids"],
+                "missing_keys": [],
+                "mismatched_keys": [],
+                "error_msgs": [],
+            }
+
+    fake_torch = types.SimpleNamespace(
+        bfloat16="bf16",
+        cuda=types.SimpleNamespace(is_available=lambda: True),
+        backends=types.SimpleNamespace(mps=None),
+    )
+    fake_logging = types.SimpleNamespace(
+        get_verbosity=lambda: logging_state["verbosity"],
+        set_verbosity=lambda value: logging_state.__setitem__("verbosity", value),
+        set_verbosity_error=lambda: logging_state.__setitem__("verbosity", -1),
+    )
+    fake_transformers = types.ModuleType("transformers")
+    fake_transformers.AutoModel = _CudaAutoModel
+    fake_transformers.AutoTokenizer = _DummyTokenizer
+    fake_transformers_utils = types.ModuleType("transformers.utils")
+    fake_transformers_utils.logging = fake_logging
+
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
+    monkeypatch.setitem(sys.modules, "transformers", fake_transformers)
+    monkeypatch.setitem(sys.modules, "transformers.utils", fake_transformers_utils)
+    TransformerDenseEncoder._BACKEND_CACHE.clear()
+
+    encoder = TransformerDenseEncoder()
+    encoder._ensure_loaded()
+
+    assert auto_model_calls[0]["dtype"] == "bf16"
+    assert encoder._batch_size == 64

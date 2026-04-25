@@ -9,6 +9,7 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 MODEL_ID="${MODEL_ID:-Qwen/Qwen2.5-7B-Instruct}"
 DEVICE="${DEVICE:-cuda}"
 DTYPE="${DTYPE:-bfloat16}"
+INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-12}"
 LOCOMO_INPUT="${LOCOMO_INPUT:-data/locomo10.json}"
 
 COMMON_POLICIES=(
@@ -32,6 +33,7 @@ python -m memory_inference.cli locomo \
   --model-id "${MODEL_ID}" \
   --device "${DEVICE}" \
   --dtype "${DTYPE}" \
+  --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
   "${COMMON_POLICIES[@]}" \
   --cache-dir .cache/memory_inference_locomo_mem0_ablation \
   --output results/locomo_mem0_ablation.json

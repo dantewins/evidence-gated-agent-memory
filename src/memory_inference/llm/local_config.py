@@ -11,6 +11,7 @@ class LocalModelConfig:
     backend: str = "hf"
     device: str = "auto"
     dtype: str = "auto"
+    inference_batch_size: int = 8
     max_new_tokens: int = 32
     temperature: float = 0.0
     top_p: float = 1.0

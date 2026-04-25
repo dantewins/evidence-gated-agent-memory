@@ -55,7 +55,31 @@ class ContextCaseRunner:
         cases: Iterable[ExperimentCase],
     ) -> List[ExecutedCase]:
         self.prepare_context(context)
-        return [self.run_case(case) for case in cases]
+        case_list = list(cases)
+        retrieved_bundles = [self._retrieve(case.runtime_query) for case in case_list]
+        traces = self.reasoner.answer_many_with_traces(
+            [case.runtime_query for case in case_list],
+            [bundle.records for bundle in retrieved_bundles],
+        )
+        executed: list[ExecutedCase] = []
+        for case, retrieved_bundle, trace in zip(case_list, retrieved_bundles, traces):
+            prediction = trace.answer
+            if case.runtime_query.multi_attributes:
+                prediction = format_multihop_prediction(
+                    prediction,
+                    case.runtime_query,
+                    retrieved_bundle.records,
+                )
+            executed.append(
+                ExecutedCase(
+                    case=case,
+                    retrieval_bundle=retrieved_bundle,
+                    reader_trace=trace,
+                    prediction=prediction,
+                    policy_name=self.policy.name,
+                )
+            )
+        return executed
 
     def _retrieve(self, query) -> RetrievalBundle:
         bundle = self._retrieve_for_query(query)

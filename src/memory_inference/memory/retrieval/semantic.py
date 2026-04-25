@@ -74,17 +74,20 @@ class TransformerDenseEncoder:
         *,
         device: str = "auto",
         max_length: int = 512,
-        batch_size: int = 16,
+        batch_size: int | None = None,
+        dtype: str = "auto",
     ) -> None:
         self.model_id = model_id
         self.device = device
         self.max_length = max_length
         self.batch_size = batch_size
+        self.dtype = dtype
         self._cache: dict[tuple[str, str], tuple[float, ...]] = {}
         self._tokenizer: Any = None
         self._model: Any = None
         self._torch: Any = None
         self._device: str | None = None
+        self._batch_size: int | None = None
 
     def encode_query(self, text: str) -> tuple[float, ...]:
         return self._encode_texts([self._format_query(text)], mode="query")[0]
@@ -111,26 +114,34 @@ class TransformerDenseEncoder:
             ) from exc
 
         resolved_device = self._resolve_device(torch)
-        cache_key = (self.model_id, resolved_device)
+        resolved_dtype_name, resolved_dtype = self._resolve_dtype(torch, resolved_device)
+        cache_key = (self.model_id, resolved_device, resolved_dtype_name)
         cached_backend = self._BACKEND_CACHE.get(cache_key)
         if cached_backend is not None:
             self._model, self._tokenizer, self._torch = cached_backend
             self._device = resolved_device
+            self._batch_size = self._resolve_batch_size(resolved_device)
             return
 
         self._torch = torch
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         if self._tokenizer.pad_token_id is None and self._tokenizer.eos_token_id is not None:
             self._tokenizer.pad_token_id = self._tokenizer.eos_token_id
+        if hasattr(self._tokenizer, "padding_side"):
+            self._tokenizer.padding_side = "right"
         previous_verbosity = transformers_logging.get_verbosity()
         try:
             transformers_logging.set_verbosity_error()
             loaded = AutoModel.from_pretrained(
                 self.model_id,
                 output_loading_info=True,
+                **self._model_load_kwargs(resolved_device, resolved_dtype),
             )
         except TypeError:
-            loaded = AutoModel.from_pretrained(self.model_id)
+            loaded = AutoModel.from_pretrained(
+                self.model_id,
+                **self._model_load_kwargs(resolved_device, resolved_dtype),
+            )
             loading_info: dict[str, Any] = {}
         finally:
             transformers_logging.set_verbosity(previous_verbosity)
@@ -141,6 +152,7 @@ class TransformerDenseEncoder:
             loading_info = {}
         self._handle_loading_info(loading_info)
         self._device = resolved_device
+        self._batch_size = self._resolve_batch_size(resolved_device)
         self._model = self._model.to(self._device)
         self._model.eval()
         self._BACKEND_CACHE[cache_key] = (self._model, self._tokenizer, self._torch)
@@ -172,14 +184,16 @@ class TransformerDenseEncoder:
         assert self._model is not None
         assert self._torch is not None
         assert self._device is not None
+        assert self._batch_size is not None
 
         outputs: list[tuple[float, ...]] = []
-        for start in range(0, len(texts), self.batch_size):
-            batch = list(texts[start:start + self.batch_size])
+        for start in range(0, len(texts), self._batch_size):
+            batch = list(texts[start:start + self._batch_size])
             encoded = self._tokenizer(
                 batch,
                 return_tensors="pt",
                 padding=True,
+                pad_to_multiple_of=8 if self._device.startswith("cuda") else None,
                 truncation=True,
                 max_length=self.max_length,
             )
@@ -187,7 +201,7 @@ class TransformerDenseEncoder:
                 key: value.to(self._device)
                 for key, value in encoded.items()
             }
-            with self._torch.no_grad():
+            with self._torch.inference_mode():
                 model_output = self._model(**encoded)
             hidden_states = getattr(model_output, "last_hidden_state", model_output[0])
             pooled = self._mean_pool(hidden_states, encoded["attention_mask"])
@@ -196,7 +210,7 @@ class TransformerDenseEncoder:
         return outputs
 
     def _mean_pool(self, hidden_states: Any, attention_mask: Any) -> Any:
-        expanded_mask = attention_mask.unsqueeze(-1).expand(hidden_states.size()).float()
+        expanded_mask = attention_mask.unsqueeze(-1).expand(hidden_states.size()).to(hidden_states.dtype)
         weighted_sum = (hidden_states * expanded_mask).sum(dim=1)
         counts = expanded_mask.sum(dim=1).clamp(min=1e-9)
         return weighted_sum / counts
@@ -210,6 +224,25 @@ class TransformerDenseEncoder:
         if mps is not None and mps.is_available():
             return "mps"
         return "cpu"
+
+    def _resolve_dtype(self, torch: Any, resolved_device: str) -> tuple[str, Any | None]:
+        if self.dtype != "auto":
+            return self.dtype, getattr(torch, self.dtype)
+        if resolved_device.startswith("cuda") and hasattr(torch, "bfloat16"):
+            return "bfloat16", torch.bfloat16
+        return "auto", None
+
+    def _resolve_batch_size(self, resolved_device: str) -> int:
+        if self.batch_size is not None:
+            return self.batch_size
+        if resolved_device.startswith("cuda"):
+            return 64
+        return 16
+
+    def _model_load_kwargs(self, resolved_device: str, resolved_dtype: Any | None) -> dict[str, Any]:
+        if resolved_device.startswith("cuda") and resolved_dtype is not None:
+            return {"dtype": resolved_dtype}
+        return {}
 
     def _format_query(self, text: str) -> str:
         return f"query: {text}"
