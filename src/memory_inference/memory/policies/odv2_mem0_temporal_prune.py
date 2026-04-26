@@ -37,7 +37,7 @@ class ODV2Mem0TemporalPrunePolicy(BaseMemoryPolicy):
             name=f"{name}::mem0",
             encoder=encoder,
             write_top_k=write_top_k,
-            history_enabled=True,
+            history_enabled=False,
             archive_conflict_enabled=False,
         )
         self.validity = ODV2Policy(

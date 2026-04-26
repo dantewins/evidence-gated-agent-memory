@@ -117,7 +117,7 @@ def test_selective_policy_removes_stale_state_only_when_mem0_has_current_evidenc
     assert result.debug["validity_appended"] == "0"
 
 
-def test_selective_policy_does_not_intervene_on_history_queries() -> None:
+def test_selective_policy_mirrors_mem0_baseline_on_history_queries() -> None:
     policy = _policy()
     policy.ingest(
         [
@@ -157,7 +157,8 @@ def test_selective_policy_does_not_intervene_on_history_queries() -> None:
     )
 
     assert result.debug["retrieval_mode"] == "odv2_mem0_selective_passthrough"
-    assert {entry.value for entry in result.entries} == {"Google", "Meta"}
+    assert result.debug["base_retrieval_mode"] == "mem0_active_dense"
+    assert {entry.value for entry in result.entries} == {"Meta"}
 
 
 def test_selective_policy_compacts_redundant_support_turn_for_current_state() -> None:
