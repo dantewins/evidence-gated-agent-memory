@@ -16,9 +16,10 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
     """Mem0-first retrieval with conservative ODV2 stale-state suppression.
 
     This policy is intentionally asymmetric: Mem0 remains the default retrieval
-    path, and ODV2 is allowed to intervene only when its validity ledger has a
-    decisive same-key current state. The goal is to preserve Mem0 recall while
-    reducing stale same-key state exposure in update-sensitive queries.
+    path, and ODV2 is allowed to remove stale same-key state only when Mem0 has
+    already retrieved the corresponding current value. The policy never injects
+    ODV2-only evidence into the answer context; this keeps Mem0 recall as the
+    safety floor while reducing obvious contradictory state.
     """
 
     def __init__(
@@ -29,7 +30,7 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
         encoder: DenseEncoder | None = None,
         write_top_k: int = 10,
         importance_threshold: float = 0.1,
-        max_validity_appends: int = 1,
+        max_validity_appends: int = 0,
     ) -> None:
         super().__init__(name=name)
         self.max_validity_appends = max_validity_appends
@@ -113,6 +114,12 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
         decisive_current = self._decisive_current_entries(query, current_entries)
         if not decisive_current:
             return self._bundle(base_records, base=base, retrieval_mode="odv2_mem0_selective_passthrough")
+        if not self._base_contains_current_same_key(base_records, query, decisive_current):
+            return self._bundle(
+                base_records,
+                base=base,
+                retrieval_mode="odv2_mem0_selective_passthrough",
+            )
 
         filtered, removed_count = self._remove_stale_same_key_records(
             base_records,
@@ -120,17 +127,16 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
             current_entries=decisive_current,
             archive_entries=archive_entries,
         )
-        records = self._dedupe(filtered + self._missing_current_entries(filtered, decisive_current))
         return self._bundle(
-            records[:top_k],
+            filtered[:top_k],
             base=base,
             retrieval_mode=(
                 "odv2_mem0_selective_guard"
                 if removed_count
-                else "odv2_mem0_selective_current_append"
+                else "odv2_mem0_selective_passthrough"
             ),
             removed_count=removed_count,
-            appended_count=max(0, len(records) - len(filtered)),
+            appended_count=0,
         )
 
     def snapshot_size(self) -> int:
@@ -189,17 +195,19 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
             filtered.append(record)
         return filtered, removed
 
-    def _missing_current_entries(
+    def _base_contains_current_same_key(
         self,
         records: list[MemoryRecord],
+        query: RuntimeQuery,
         current_entries: list[MemoryRecord],
-    ) -> list[MemoryRecord]:
-        existing_ids = {record.entry_id for record in records}
-        return [
-            entry
-            for entry in current_entries[: self.max_validity_appends]
-            if entry.entry_id not in existing_ids
-        ]
+    ) -> bool:
+        current_values = {self._normalized_value(entry.value) for entry in current_entries}
+        return any(
+            self._same_query_key(record, query)
+            and self._is_state_record(record)
+            and self._normalized_value(record.value) in current_values
+            for record in records
+        )
 
     def _bundle(
         self,

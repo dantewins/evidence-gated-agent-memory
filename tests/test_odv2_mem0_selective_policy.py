@@ -1,4 +1,5 @@
 from memory_inference.domain.enums import QueryMode
+from memory_inference.domain.memory import RetrievalBundle
 from memory_inference.llm.mock_consolidator import MockConsolidator
 from memory_inference.memory.policies.presets import odv2_mem0_selective_policy
 from tests.factories import make_query, make_record
@@ -66,7 +67,7 @@ def test_selective_policy_passes_through_mem0_when_no_validity_signal() -> None:
     assert [entry.entry_id for entry in result.entries] == ["hiking"]
 
 
-def test_selective_policy_removes_archived_stale_state_but_preserves_mem0_order() -> None:
+def test_selective_policy_removes_stale_state_only_when_mem0_has_current_evidence() -> None:
     policy = _policy()
     old_fact = make_record(
         entry_id="fact-google",
@@ -86,17 +87,16 @@ def test_selective_policy_removes_archived_stale_state_but_preserves_mem0_order(
         session_id="s",
         metadata={"source_kind": "structured_fact", "memory_kind": "state"},
     )
-    support = make_record(
-        entry_id="support-meta",
-        entity="Alice",
-        attribute="dialogue",
-        value="Alice now works at Meta after leaving Google.",
-        timestamp=2,
-        session_id="s",
-    )
-    policy.ingest([old_fact, support, current_fact])
+    policy.ingest([old_fact, current_fact])
     policy.maybe_consolidate()
 
+    def retrieve_with_both_sides(_, top_k=5):
+        return RetrievalBundle(
+            records=[old_fact, current_fact][:top_k],
+            debug={"retrieval_mode": "stub_mem0_with_conflict"},
+        )
+
+    policy.retriever.retrieve_for_query = retrieve_with_both_sides
     result = policy.retrieve_for_query(
         make_query(
             query_id="q-current",
@@ -110,15 +110,11 @@ def test_selective_policy_removes_archived_stale_state_but_preserves_mem0_order(
         ),
         top_k=5,
     )
-    ids = [entry.entry_id for entry in result.entries]
+    values = [entry.value for entry in result.entries]
 
-    assert result.debug["retrieval_mode"] in {
-        "odv2_mem0_selective_guard",
-        "odv2_mem0_selective_current_append",
-    }
-    assert "fact-meta" in ids
-    assert "Google" not in {entry.value for entry in result.entries if entry.attribute == "employer"}
-    assert ids[0] != "fact-meta" or result.debug["validity_appended"] == "0"
+    assert result.debug["retrieval_mode"] == "odv2_mem0_selective_guard"
+    assert values == ["Meta"]
+    assert result.debug["validity_appended"] == "0"
 
 
 def test_selective_policy_does_not_intervene_on_history_queries() -> None:
