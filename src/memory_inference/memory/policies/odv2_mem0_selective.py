@@ -19,7 +19,9 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
     path, and ODV2 is allowed to remove stale same-key state only when Mem0 has
     already retrieved the corresponding current value. The policy never injects
     ODV2-only evidence into the answer context; this keeps Mem0 recall as the
-    safety floor while reducing obvious contradictory state.
+    safety floor while reducing obvious contradictory state. It also removes
+    redundant support turns when the retrieved state fact already carries the
+    support text, which can reduce prompt cost without dropping the state value.
     """
 
     def __init__(
@@ -97,6 +99,8 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
         if query.query_mode == QueryMode.HISTORY or query.attribute in {"dialogue", "event"}:
             return self._bundle(base_records, base=base, retrieval_mode="odv2_mem0_selective_passthrough")
 
+        base_records, support_compacted = self._compact_redundant_support(base_records, query)
+
         current_entries = self.validity.current_entries_for_query(query)
         archive_entries = self.validity.archive_entries_for_query(query)
         conflict_entries = self.validity.conflict_entries_for_query(query)
@@ -109,16 +113,31 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
                 retrieval_mode="odv2_mem0_selective_conflict",
                 removed_count=0,
                 appended_count=0,
+                support_compacted=support_compacted,
             )
 
         decisive_current = self._decisive_current_entries(query, current_entries)
         if not decisive_current:
-            return self._bundle(base_records, base=base, retrieval_mode="odv2_mem0_selective_passthrough")
+            return self._bundle(
+                base_records,
+                base=base,
+                retrieval_mode=(
+                    "odv2_mem0_selective_compact"
+                    if support_compacted
+                    else "odv2_mem0_selective_passthrough"
+                ),
+                support_compacted=support_compacted,
+            )
         if not self._base_contains_current_same_key(base_records, query, decisive_current):
             return self._bundle(
                 base_records,
                 base=base,
-                retrieval_mode="odv2_mem0_selective_passthrough",
+                retrieval_mode=(
+                    "odv2_mem0_selective_compact"
+                    if support_compacted
+                    else "odv2_mem0_selective_passthrough"
+                ),
+                support_compacted=support_compacted,
             )
 
         filtered, removed_count = self._remove_stale_same_key_records(
@@ -133,10 +152,15 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
             retrieval_mode=(
                 "odv2_mem0_selective_guard"
                 if removed_count
-                else "odv2_mem0_selective_passthrough"
+                else (
+                    "odv2_mem0_selective_compact"
+                    if support_compacted
+                    else "odv2_mem0_selective_passthrough"
+                )
             ),
             removed_count=removed_count,
             appended_count=0,
+            support_compacted=support_compacted,
         )
 
     def snapshot_size(self) -> int:
@@ -209,6 +233,32 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
             for record in records
         )
 
+    def _compact_redundant_support(
+        self,
+        records: list[MemoryRecord],
+        query: RuntimeQuery,
+    ) -> tuple[list[MemoryRecord], int]:
+        if query.query_mode not in {QueryMode.CURRENT_STATE, QueryMode.STATE_WITH_PROVENANCE}:
+            return records, 0
+        support_source_ids = {
+            record.source_entry_id
+            for record in records
+            if self._same_query_key(record, query)
+            and self._is_state_record(record)
+            and record.source_entry_id
+            and record.support_text
+        }
+        if not support_source_ids:
+            return records, 0
+        compacted: list[MemoryRecord] = []
+        removed = 0
+        for record in records:
+            if record.entry_id in support_source_ids and record.attribute in {"dialogue", "event"}:
+                removed += 1
+                continue
+            compacted.append(record)
+        return compacted, removed
+
     def _bundle(
         self,
         records: list[MemoryRecord],
@@ -217,6 +267,7 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
         retrieval_mode: str,
         removed_count: int = 0,
         appended_count: int = 0,
+        support_compacted: int = 0,
     ) -> RetrievalBundle:
         return RetrievalBundle(
             records=records,
@@ -227,6 +278,7 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
                 "base_retrieval_mode": base.debug.get("retrieval_mode", ""),
                 "validity_removed": str(removed_count),
                 "validity_appended": str(appended_count),
+                "support_compacted": str(support_compacted),
             },
         )
 

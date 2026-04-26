@@ -158,3 +158,56 @@ def test_selective_policy_does_not_intervene_on_history_queries() -> None:
 
     assert result.debug["retrieval_mode"] == "odv2_mem0_selective_passthrough"
     assert {entry.value for entry in result.entries} == {"Google", "Meta"}
+
+
+def test_selective_policy_compacts_redundant_support_turn_for_current_state() -> None:
+    policy = _policy()
+    support = make_record(
+        entry_id="turn-1",
+        entity="Alice",
+        attribute="dialogue",
+        value="I started working at Meta.",
+        timestamp=1,
+        session_id="s",
+    )
+    fact = make_record(
+        entry_id="fact-meta",
+        entity="Alice",
+        attribute="employer",
+        value="Meta",
+        timestamp=1,
+        session_id="s",
+        metadata={
+            "source_kind": "structured_fact",
+            "memory_kind": "state",
+            "source_entry_id": "turn-1",
+            "support_text": "I started working at Meta.",
+        },
+    )
+    policy.ingest([support, fact])
+    policy.maybe_consolidate()
+
+    def retrieve_with_support(_, top_k=5):
+        return RetrievalBundle(
+            records=[fact, support][:top_k],
+            debug={"retrieval_mode": "stub_mem0_with_support"},
+        )
+
+    policy.retriever.retrieve_for_query = retrieve_with_support
+    result = policy.retrieve_for_query(
+        make_query(
+            query_id="q-current",
+            entity="Alice",
+            attribute="employer",
+            question="Where does Alice work now?",
+            answer="Meta",
+            timestamp=2,
+            session_id="s",
+            query_mode=QueryMode.CURRENT_STATE,
+        ),
+        top_k=5,
+    )
+
+    assert [entry.entry_id for entry in result.entries] == ["fact-meta"]
+    assert result.debug["retrieval_mode"] == "odv2_mem0_selective_compact"
+    assert result.debug["support_compacted"] == "1"

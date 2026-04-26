@@ -100,7 +100,9 @@ def _intervened(row: Row) -> bool:
     return (
         "guard" in retrieval_mode
         or "prune" in retrieval_mode
+        or "compact" in retrieval_mode
         or _as_int(row.get("validity_removed")) > 0
+        or _as_int(row.get("support_compacted")) > 0
         or _as_int(row.get("temporal_pruned")) > 0
     )
 

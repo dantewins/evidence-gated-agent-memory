@@ -57,6 +57,7 @@ def test_diagnostic_row_captures_case_level_tradeoff_signals(tmp_path) -> None:
             debug={
                 "retrieval_mode": "diagnostic",
                 "validity_removed": "1",
+                "support_compacted": "4",
                 "temporal_pruned": "2",
                 "conflict_values": "3",
                 "decision_source": "ledger",
@@ -77,6 +78,7 @@ def test_diagnostic_row_captures_case_level_tradeoff_signals(tmp_path) -> None:
     assert row["prompt_tokens"] == 32
     assert row["retrieval_mode"] == "diagnostic"
     assert row["validity_removed"] == 1
+    assert row["support_compacted"] == 4
     assert row["temporal_pruned"] == 2
     assert row["conflict_values"] == 3
     assert row["decision_source"] == "ledger"

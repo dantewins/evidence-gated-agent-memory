@@ -52,6 +52,7 @@ def evaluated_case_to_diagnostic_row(
         "base_retrieval_mode": evaluated.retrieval_bundle.debug.get("base_retrieval_mode", ""),
         "validity_removed": _debug_int(evaluated, "validity_removed"),
         "validity_appended": _debug_int(evaluated, "validity_appended"),
+        "support_compacted": _debug_int(evaluated, "support_compacted"),
         "temporal_pruned": _debug_int(evaluated, "temporal_pruned"),
         "conflict_values": _debug_int(evaluated, "conflict_values"),
         "decision_source": evaluated.retrieval_bundle.debug.get("decision_source", ""),
