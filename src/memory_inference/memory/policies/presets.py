@@ -5,6 +5,7 @@ from memory_inference.memory.retrieval.semantic import DenseEncoder
 from memory_inference.memory.policies.mem0 import Mem0Policy
 from memory_inference.memory.policies.odv2 import ODV2Policy
 from memory_inference.memory.policies.odv2_mem0_hybrid import ODV2Mem0HybridPolicy
+from memory_inference.memory.policies.odv2_recovery import ODV2RecoveryPolicy
 from memory_inference.memory.policies.validity_guard import Mem0ValidityGuardPolicy
 from memory_inference.memory.retrieval import LexicalBackboneRanker, ODV2DenseBackboneRanker
 
@@ -106,6 +107,24 @@ def odv2_mem0_hybrid_policy(
 ) -> ODV2Mem0HybridPolicy:
     return ODV2Mem0HybridPolicy(
         name="odv2_mem0_hybrid",
+        consolidator=consolidator,
+        encoder=encoder,
+        write_top_k=write_top_k,
+        importance_threshold=importance_threshold,
+        support_history_limit=support_history_limit,
+    )
+
+
+def odv2_recovery_policy(
+    *,
+    consolidator: BaseConsolidator,
+    encoder: DenseEncoder | None = None,
+    write_top_k: int = 10,
+    importance_threshold: float = 0.1,
+    support_history_limit: int = 1,
+) -> ODV2RecoveryPolicy:
+    return ODV2RecoveryPolicy(
+        name="odv2_recovery",
         consolidator=consolidator,
         encoder=encoder,
         write_top_k=write_top_k,

@@ -163,11 +163,12 @@ class ODV2DenseBackboneRanker:
         query_context: tuple[float, ...],
     ) -> tuple[float, ...]:
         dense_similarity = self.encoder.similarity(query_context, self._entry_vector(entry))
-        entity_bonus = 1.0 if query.entity in {"conversation", "all"} or entry.entity == query.entity else 0.0
+        entity_bonus = self._entity_signal(entry, query)
         attribute_bonus = 1.0 if entry.attribute == query.attribute else 0.0
         return (
+            entity_bonus,
+            attribute_bonus,
             dense_similarity,
-            entity_bonus + attribute_bonus,
             entry.importance,
             entry.confidence,
             self._time_bias(entry, query),
@@ -182,6 +183,8 @@ class ODV2DenseBackboneRanker:
         memory_kind: str,
     ) -> tuple[float, ...]:
         dense_similarity = self.encoder.similarity(query_context, self._entry_vector(entry))
+        entity_bonus = self._entity_signal(entry, query)
+        attribute_bonus = 1.0 if entry.attribute == query.attribute else 0.0
         status_bonus = {
             MemoryStatus.ACTIVE: 1.0,
             MemoryStatus.REINFORCED: 0.9,
@@ -192,8 +195,12 @@ class ODV2DenseBackboneRanker:
         memory_kind_bonus = 0.4 if memory_kind == "state" else 0.0
         support_bonus = 0.2 if entry.source_entry_id else 0.0
         return (
+            entity_bonus,
+            attribute_bonus,
+            status_bonus,
+            memory_kind_bonus,
+            support_bonus,
             dense_similarity,
-            status_bonus + memory_kind_bonus + support_bonus,
             entry.importance,
             entry.confidence,
             self._time_bias(entry, query),
@@ -209,6 +216,7 @@ class ODV2DenseBackboneRanker:
         anchor_scopes: set[str],
     ) -> tuple[float, ...]:
         dense_similarity = self.encoder.similarity(query_context, self._entry_vector(entry))
+        entity_bonus = self._entity_signal(entry, query)
         anchor_bonus = 1.5 if entry.entry_id in anchor_source_ids else 0.0
         scope_bonus = 1.0 if entry.scope in anchor_scopes else 0.0
         attribute_bonus = (
@@ -217,10 +225,11 @@ class ODV2DenseBackboneRanker:
             else 0.0
         )
         return (
+            entity_bonus,
+            attribute_bonus,
             dense_similarity,
             anchor_bonus,
             scope_bonus,
-            attribute_bonus,
             entry.importance,
             entry.confidence,
             self._time_bias(entry, query),
@@ -238,6 +247,14 @@ class ODV2DenseBackboneRanker:
             vector = self.encoder.encode_passage(entry_search_text(entry))
             self._entry_vectors[entry.entry_id] = vector
         return vector
+
+    @staticmethod
+    def _entity_signal(entry: MemoryRecord, query: RuntimeQuery) -> float:
+        if query.entity in {"conversation", "all"} or entry.entity == query.entity:
+            return 1.0
+        if entry.entity and entry.entity.lower() in query.question.lower():
+            return 0.9
+        return 0.0
 
     @staticmethod
     def _time_bias(entry: MemoryRecord, query: RuntimeQuery) -> float:

@@ -39,6 +39,8 @@ def test_cli_delegates_benchmark_execution_to_orchestration(tmp_path, monkeypatc
                     span_match_accuracy=1.0,
                     abstention_accuracy=0.0,
                     proactive_interference_rate=0.0,
+                    stale_state_exposure_rate=0.0,
+                    retrieval_hit_rate=1.0,
                     avg_retrieved_items=1.0,
                     avg_retrieved_chars=10.0,
                     avg_retrieved_context_tokens=2.0,

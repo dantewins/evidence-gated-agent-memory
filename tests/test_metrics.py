@@ -51,3 +51,57 @@ def test_metrics_report_prompt_tokens_and_retrieved_memory_tokens() -> None:
     assert metrics.avg_retrieved_context_tokens == 5.0
     assert metrics.avg_context_tokens == 99.0
     assert metrics.amortized_end_to_end_tokens == 102.0
+    assert metrics.retrieval_hit_rate == 1.0
+    assert metrics.stale_state_exposure_rate == 0.0
+
+
+def test_metrics_report_stale_state_exposure_separately_from_accuracy() -> None:
+    query = make_query(
+        query_id="q",
+        entity="user",
+        attribute="home_city",
+        question="Where does the user live now?",
+        answer="Boston",
+        timestamp=3,
+        session_id="s",
+    )
+    retrieved = [
+        make_record(
+            entry_id="old",
+            entity="user",
+            attribute="home_city",
+            value="Seattle",
+            timestamp=1,
+            session_id="s",
+            metadata={"memory_kind": "state"},
+        ),
+        make_record(
+            entry_id="new",
+            entity="user",
+            attribute="home_city",
+            value="Boston",
+            timestamp=2,
+            session_id="s",
+            metadata={"memory_kind": "state"},
+        ),
+    ]
+    eval_target = EvalTarget(query_id=query.query_id, gold_answer="Boston")
+    evaluated = EvaluatedCase(
+        case=ExperimentCase(
+            case_id=query.query_id,
+            context_id=query.context_id,
+            runtime_query=query,
+            eval_target=eval_target,
+        ),
+        retrieval_bundle=RetrievalBundle(records=retrieved),
+        reader_trace=ReaderTrace(answer="Boston"),
+        prediction="Boston",
+        correct=True,
+        policy_name="policy",
+    )
+
+    metrics = compute_metrics("policy", [evaluated])
+
+    assert metrics.accuracy == 1.0
+    assert metrics.retrieval_hit_rate == 1.0
+    assert metrics.stale_state_exposure_rate == 1.0

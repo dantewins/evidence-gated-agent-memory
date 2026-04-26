@@ -3,6 +3,7 @@ from memory_inference.llm.mock_consolidator import MockConsolidator
 from memory_inference.memory.policies.presets import (
     odv2_dense_compact_policy,
     odv2_dense_policy,
+    odv2_recovery_policy,
     odv2_strong_policy,
     offline_delta_v2_policy,
 )
@@ -35,6 +36,7 @@ def test_odv2_policy_presets_have_expected_names_and_backbones() -> None:
     offline = offline_delta_v2_policy(consolidator=MockConsolidator())
     strong = odv2_strong_policy(consolidator=MockConsolidator())
     dense = odv2_dense_policy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
+    recovery = odv2_recovery_policy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
     dense_compact = odv2_dense_compact_policy(
         consolidator=MockConsolidator(),
         encoder=FakeDenseEncoder(),
@@ -46,6 +48,7 @@ def test_odv2_policy_presets_have_expected_names_and_backbones() -> None:
     assert strong.hybrid_backbone.name == "strong"
     assert dense.name == "odv2_dense"
     assert dense.hybrid_backbone.name == "dense"
+    assert recovery.name == "odv2_recovery"
     assert dense_compact.name == "odv2_dense_compact"
     assert dense_compact.hybrid_backbone.name == "dense"
 

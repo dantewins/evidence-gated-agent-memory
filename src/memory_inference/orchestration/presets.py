@@ -11,6 +11,7 @@ from memory_inference.memory.policies import (
     mem0_policy,
     mem0_validity_guard_policy,
     odv2_mem0_hybrid_policy,
+    odv2_recovery_policy,
     odv2_dense_compact_policy,
     odv2_dense_policy,
     odv2_strong_policy,
@@ -34,6 +35,7 @@ PAPER_POLICY_NAMES: tuple[str, ...] = (
     "mem0_all_features",
     "mem0_validity_guard",
     "odv2_mem0_hybrid",
+    "odv2_recovery",
     "offline_delta_v2",
     "odv2_strong",
     "odv2_dense",
@@ -89,6 +91,7 @@ def policy_factory_by_name(name: str) -> PolicyFactory:
         "mem0_all_features": mem0_all_features_policy,
         "mem0_validity_guard": _mem0_validity_guard_factory,
         "odv2_mem0_hybrid": _odv2_mem0_hybrid_factory,
+        "odv2_recovery": _odv2_recovery_factory,
         "offline_delta_v2": _offline_delta_factory,
         "odv2_strong": _odv2_strong_factory,
         "odv2_dense": _odv2_dense_factory,
@@ -109,6 +112,10 @@ def _mem0_validity_guard_factory():
 
 def _odv2_mem0_hybrid_factory():
     return odv2_mem0_hybrid_policy(consolidator=BenchmarkHeuristicConsolidator())
+
+
+def _odv2_recovery_factory():
+    return odv2_recovery_policy(consolidator=BenchmarkHeuristicConsolidator())
 
 
 def _odv2_strong_factory():

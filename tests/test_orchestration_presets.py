@@ -6,6 +6,7 @@ from memory_inference.orchestration.presets import (
     policy_factory_by_name,
 )
 from memory_inference.memory.policies.odv2_mem0_hybrid import ODV2Mem0HybridPolicy
+from memory_inference.memory.policies.odv2_recovery import ODV2RecoveryPolicy
 
 
 def test_policy_preset_groups_are_purpose_specific() -> None:
@@ -26,4 +27,6 @@ def test_paper_policy_factories_resolve_named_policies() -> None:
     assert policy_factory_by_name("odv2_dense_compact")().name == "odv2_dense_compact"
     assert policy_factory_by_name("mem0_validity_guard")().name == "mem0_validity_guard"
     assert policy_factory_by_name("odv2_mem0_hybrid")().name == "odv2_mem0_hybrid"
+    assert policy_factory_by_name("odv2_recovery")().name == "odv2_recovery"
     assert isinstance(policy_factory_by_name("odv2_mem0_hybrid")(), ODV2Mem0HybridPolicy)
+    assert isinstance(policy_factory_by_name("odv2_recovery")(), ODV2RecoveryPolicy)

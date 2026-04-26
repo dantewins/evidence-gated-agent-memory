@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, List, Optional, Sequence
 
+from memory_inference.domain.enums import QueryMode
 from memory_inference.domain.results import EvaluatedCase
 from memory_inference.evaluation.scoring import answers_exact_match, answers_span_match
 
@@ -19,6 +20,8 @@ class ExperimentMetrics:
     span_match_accuracy: float
     abstention_accuracy: float
     proactive_interference_rate: float
+    stale_state_exposure_rate: float
+    retrieval_hit_rate: float
     avg_retrieved_items: float
     avg_retrieved_chars: float
     avg_retrieved_context_tokens: float
@@ -61,6 +64,8 @@ def compute_metrics(
         if row.prediction == ABSTAIN_TOKEN
     )
     interference_count = sum(1 for row in rows if _has_proactive_interference(row))
+    stale_state_exposure_count = sum(1 for row in rows if _has_stale_state_exposure(row))
+    retrieval_hit_count = sum(1 for row in rows if _has_retrieval_hit(row))
     avg_items = sum(len(row.retrieval_bundle.records) for row in rows) / total if total else 0.0
     avg_chars = (
         sum(sum(len(record.text()) for record in row.retrieval_bundle.records) for row in rows) / total
@@ -100,6 +105,8 @@ def compute_metrics(
             abstention_correct / len(abstention_queries) if abstention_queries else 0.0
         ),
         proactive_interference_rate=(interference_count / total) if total else 0.0,
+        stale_state_exposure_rate=(stale_state_exposure_count / total) if total else 0.0,
+        retrieval_hit_rate=(retrieval_hit_count / total) if total else 0.0,
         avg_retrieved_items=avg_items,
         avg_retrieved_chars=avg_chars,
         avg_retrieved_context_tokens=avg_retrieved_context_tokens,
@@ -122,11 +129,49 @@ def compute_metrics(
 def _has_proactive_interference(row: EvaluatedCase) -> bool:
     mismatched = [
         record for record in row.retrieval_bundle.records
-        if record.entity == row.case.runtime_query.entity
-        and record.attribute == row.case.runtime_query.attribute
-        and record.value != row.case.eval_target.gold_answer
+        if _record_matches_query_key(record, row)
+        and not answers_span_match(record.value, row.case.eval_target.gold_answer)
     ]
-    return bool(mismatched and row.prediction != row.case.eval_target.gold_answer)
+    return bool(mismatched and not answers_span_match(row.prediction, row.case.eval_target.gold_answer))
+
+
+def _has_stale_state_exposure(row: EvaluatedCase) -> bool:
+    query = row.case.runtime_query
+    if query.query_mode not in {QueryMode.CURRENT_STATE, QueryMode.STATE_WITH_PROVENANCE}:
+        return False
+    if query.attribute in {"dialogue", "event"}:
+        return False
+    return any(
+        _record_matches_query_key(record, row)
+        and _is_state_record(record)
+        and not answers_span_match(record.value, row.case.eval_target.gold_answer)
+        for record in row.retrieval_bundle.records
+    )
+
+
+def _has_retrieval_hit(row: EvaluatedCase) -> bool:
+    return any(
+        _record_matches_query_key(record, row)
+        and (
+            answers_span_match(record.value, row.case.eval_target.gold_answer)
+            or answers_span_match(record.support_text, row.case.eval_target.gold_answer)
+        )
+        for record in row.retrieval_bundle.records
+    )
+
+
+def _record_matches_query_key(record, row: EvaluatedCase) -> bool:
+    query = row.case.runtime_query
+    entity_matches = query.entity in {"conversation", "all"} or record.entity == query.entity
+    if not entity_matches:
+        return False
+    if record.attribute == query.attribute:
+        return True
+    return query.attribute in {"dialogue", "event"} and record.attribute in {"dialogue", "event"}
+
+
+def _is_state_record(record) -> bool:
+    return record.memory_kind == "state" or record.source_kind == "structured_fact"
 
 
 def _token_count(text: str) -> int:

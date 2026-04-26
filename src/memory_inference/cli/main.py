@@ -47,6 +47,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(
             f"{row.policy_name}: accuracy={row.accuracy:.3f} "
             f"exact_accuracy={row.exact_match_accuracy:.3f} "
+            f"retrieval_hit={row.retrieval_hit_rate:.3f} "
+            f"stale_exposure={row.stale_state_exposure_rate:.3f} "
             f"context_tokens={row.avg_context_tokens:.2f} "
             f"memory_tokens={row.avg_retrieved_context_tokens:.2f} "
             f"latency_ms={row.avg_query_latency_ms:.2f}"
