@@ -43,4 +43,4 @@ LONGMEMEVAL_INPUT="${LONGMEMEVAL_INPUT:-data/longmemeval_s_cleaned.json}"
   --output "results/longmemeval_${SAFE_SLICE_NAME}.json" \
   --cases-output "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl"
 
-python scripts/summarize_diagnostics.py "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl" mem0
+"${PYTHON_BIN}" scripts/summarize_diagnostics.py "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl" mem0
