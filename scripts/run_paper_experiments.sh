@@ -43,6 +43,7 @@ fi
   --policy offline_delta_v2 \
   --policy odv2_strong \
   --policy odv2_dense \
+  --policy odv2_dense_compact \
   --cache-dir .cache/memory_inference_longmemeval_final \
   --output results/longmemeval_qwen25_7b_final.json
 
@@ -62,5 +63,6 @@ fi
   --policy offline_delta_v2 \
   --policy odv2_strong \
   --policy odv2_dense \
+  --policy odv2_dense_compact \
   --cache-dir .cache/memory_inference_locomo_final \
   --output results/locomo_qwen25_7b_final.json

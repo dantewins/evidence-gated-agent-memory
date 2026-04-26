@@ -30,6 +30,7 @@ COMMON_POLICIES=(
   --policy mem0_validity_guard
   --policy odv2_mem0_hybrid
   --policy odv2_dense
+  --policy odv2_dense_compact
 )
 
 "${PYTHON_BIN}" -m memory_inference.cli longmemeval \

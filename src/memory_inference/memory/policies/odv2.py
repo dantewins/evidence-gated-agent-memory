@@ -41,6 +41,7 @@ class ODV2Policy(BaseMemoryPolicy):
         self.archive_store = ArchiveStore()
         self.conflict_store = ConflictStore()
         self.hybrid_backbone = hybrid_backbone
+        self._compact_current_state = compact_current_state
         self.hybrid_ranker = (
             HybridRanker(
                 backbone=hybrid_backbone,
@@ -103,7 +104,11 @@ class ODV2Policy(BaseMemoryPolicy):
 
     def retrieve_for_query(self, query: RuntimeQuery, top_k: int = 5) -> RetrievalBundle:
         if self.hybrid_ranker is not None:
-            hybrid_top_k = max(top_k, 8) if is_open_ended_query(query) else top_k
+            hybrid_top_k = (
+                top_k
+                if self._compact_current_state and not is_open_ended_query(query)
+                else max(top_k, 8)
+            )
             return self.hybrid_ranker.retrieve(
                 query,
                 episodic_log=self.episodic_log,

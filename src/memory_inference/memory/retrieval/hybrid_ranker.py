@@ -340,6 +340,60 @@ class HybridRanker:
                 },
             )
 
+        if not self._compact_current_state:
+            structured_ranked = self.backbone.rank(
+                query,
+                structured_candidates,
+                score_fn=lambda entry, query_context: self.backbone.structured_score(
+                    entry,
+                    query,
+                    query_context,
+                    memory_kind=self.builder.memory_kind(entry),
+                ),
+                limit=max(top_k * 12, 48),
+            )[:top_k]
+
+            anchor_source_ids = self.builder.anchor_source_ids(structured_ranked)
+            anchor_scopes = self.builder.anchor_scopes(structured_ranked)
+            evidence_candidates = self.builder.evidence_candidates(
+                query,
+                episodic_log=episodic_log,
+                anchor_source_ids=anchor_source_ids,
+                anchor_scopes=anchor_scopes,
+            )
+            evidence_ranked = self.backbone.rank(
+                query,
+                evidence_candidates,
+                score_fn=lambda entry, query_context: self.backbone.evidence_score(
+                    entry,
+                    query,
+                    query_context,
+                    anchor_source_ids=anchor_source_ids,
+                    anchor_scopes=anchor_scopes,
+                ),
+                limit=max(top_k * 16, 64),
+            )[:top_k]
+
+            merged = self.merge_strategy.merge(
+                state_entries=structured_ranked,
+                evidence_entries=evidence_ranked,
+                top_k=top_k,
+            )
+            expanded = expand_with_support_entries(
+                merged,
+                episodic_log,
+                support_limit=self.support_history_limit,
+                max_entries=top_k + self.support_history_limit,
+            )
+            return RetrievalBundle(
+                records=expanded,
+                debug={
+                    "policy": policy_name,
+                    "retrieval_mode": "hybrid_state_evidence",
+                    "backbone": self.backbone.name,
+                },
+            )
+
         structured_ranked = self.backbone.rank(
             query,
             structured_candidates,

@@ -1,6 +1,11 @@
 from memory_inference.domain.enums import QueryMode
 from memory_inference.llm.mock_consolidator import MockConsolidator
-from memory_inference.memory.policies import ODV2Policy, odv2_dense_policy, odv2_strong_policy
+from memory_inference.memory.policies import (
+    ODV2Policy,
+    odv2_dense_compact_policy,
+    odv2_dense_policy,
+    odv2_strong_policy,
+)
 from tests.factories import make_query, make_record
 
 
@@ -32,6 +37,10 @@ def _strong_policy() -> ODV2Policy:
 
 def _dense_policy() -> ODV2Policy:
     return odv2_dense_policy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
+
+
+def _dense_compact_policy() -> ODV2Policy:
+    return odv2_dense_compact_policy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
 
 
 def test_odv2_strong_structured_query_returns_state_and_support_evidence() -> None:
@@ -335,3 +344,4 @@ def test_odv2_dense_evidence_lane_prefers_semantic_match_over_wrong_anchor() -> 
 def test_odv2_hybrid_policy_names_are_explicit() -> None:
     assert _strong_policy().name == "odv2_strong"
     assert _dense_policy().name == "odv2_dense"
+    assert _dense_compact_policy().name == "odv2_dense_compact"

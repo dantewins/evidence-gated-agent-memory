@@ -11,6 +11,7 @@ from memory_inference.memory.policies import (
     mem0_policy,
     mem0_validity_guard_policy,
     odv2_mem0_hybrid_policy,
+    odv2_dense_compact_policy,
     odv2_dense_policy,
     odv2_strong_policy,
     offline_delta_v2_policy,
@@ -36,6 +37,7 @@ PAPER_POLICY_NAMES: tuple[str, ...] = (
     "offline_delta_v2",
     "odv2_strong",
     "odv2_dense",
+    "odv2_dense_compact",
 )
 
 DEBUG_POLICY_NAMES: tuple[str, ...] = (
@@ -90,6 +92,7 @@ def policy_factory_by_name(name: str) -> PolicyFactory:
         "offline_delta_v2": _offline_delta_factory,
         "odv2_strong": _odv2_strong_factory,
         "odv2_dense": _odv2_dense_factory,
+        "odv2_dense_compact": _odv2_dense_compact_factory,
     }
     if name not in lookup:
         raise KeyError(f"Unknown policy preset: {name}")
@@ -114,3 +117,7 @@ def _odv2_strong_factory():
 
 def _odv2_dense_factory():
     return odv2_dense_policy(consolidator=BenchmarkHeuristicConsolidator())
+
+
+def _odv2_dense_compact_factory():
+    return odv2_dense_compact_policy(consolidator=BenchmarkHeuristicConsolidator())

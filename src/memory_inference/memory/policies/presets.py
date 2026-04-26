@@ -181,6 +181,23 @@ def odv2_dense_policy(
         support_history_limit=support_history_limit,
         hybrid_backbone=ODV2DenseBackboneRanker(encoder=encoder),
         broad_candidate_pool=True,
+    )
+
+
+def odv2_dense_compact_policy(
+    *,
+    consolidator,
+    importance_threshold: float = 0.1,
+    support_history_limit: int = 3,
+    encoder: DenseEncoder | None = None,
+) -> ODV2Policy:
+    return build_odv2_policy(
+        name="odv2_dense_compact",
+        consolidator=consolidator,
+        importance_threshold=importance_threshold,
+        support_history_limit=support_history_limit,
+        hybrid_backbone=ODV2DenseBackboneRanker(encoder=encoder),
+        broad_candidate_pool=True,
         prefer_exact_entity_when_available=True,
         compact_current_state=True,
     )

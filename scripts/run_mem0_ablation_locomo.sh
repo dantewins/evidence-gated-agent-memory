@@ -35,6 +35,7 @@ COMMON_POLICIES=(
   --policy offline_delta_v2
   --policy odv2_strong
   --policy odv2_dense
+  --policy odv2_dense_compact
 )
 
 "${PYTHON_BIN}" -m memory_inference.cli locomo \
