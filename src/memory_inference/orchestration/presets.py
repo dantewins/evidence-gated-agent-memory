@@ -12,6 +12,7 @@ from memory_inference.memory.policies import (
     mem0_validity_guard_policy,
     odv2_mem0_hybrid_policy,
     odv2_mem0_selective_policy,
+    odv2_mem0_temporal_prune_policy,
     odv2_recovery_policy,
     odv2_dense_compact_policy,
     odv2_dense_policy,
@@ -37,6 +38,7 @@ PAPER_POLICY_NAMES: tuple[str, ...] = (
     "mem0_validity_guard",
     "odv2_mem0_hybrid",
     "odv2_mem0_selective",
+    "odv2_mem0_temporal_prune",
     "odv2_recovery",
     "offline_delta_v2",
     "odv2_strong",
@@ -94,6 +96,7 @@ def policy_factory_by_name(name: str) -> PolicyFactory:
         "mem0_validity_guard": _mem0_validity_guard_factory,
         "odv2_mem0_hybrid": _odv2_mem0_hybrid_factory,
         "odv2_mem0_selective": _odv2_mem0_selective_factory,
+        "odv2_mem0_temporal_prune": _odv2_mem0_temporal_prune_factory,
         "odv2_recovery": _odv2_recovery_factory,
         "offline_delta_v2": _offline_delta_factory,
         "odv2_strong": _odv2_strong_factory,
@@ -119,6 +122,10 @@ def _odv2_mem0_hybrid_factory():
 
 def _odv2_mem0_selective_factory():
     return odv2_mem0_selective_policy(consolidator=BenchmarkHeuristicConsolidator())
+
+
+def _odv2_mem0_temporal_prune_factory():
+    return odv2_mem0_temporal_prune_policy(consolidator=BenchmarkHeuristicConsolidator())
 
 
 def _odv2_recovery_factory():

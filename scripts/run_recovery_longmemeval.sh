@@ -30,6 +30,7 @@ COMMON_POLICIES=(
   --policy mem0_validity_guard
   --policy odv2_mem0_hybrid
   --policy odv2_mem0_selective
+  --policy odv2_mem0_temporal_prune
   --policy odv2_recovery
   --policy odv2_dense
   --policy odv2_dense_compact

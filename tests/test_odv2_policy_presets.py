@@ -4,6 +4,7 @@ from memory_inference.memory.policies.presets import (
     odv2_dense_compact_policy,
     odv2_dense_policy,
     odv2_mem0_selective_policy,
+    odv2_mem0_temporal_prune_policy,
     odv2_recovery_policy,
     odv2_strong_policy,
     offline_delta_v2_policy,
@@ -38,6 +39,10 @@ def test_odv2_policy_presets_have_expected_names_and_backbones() -> None:
     strong = odv2_strong_policy(consolidator=MockConsolidator())
     dense = odv2_dense_policy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
     selective = odv2_mem0_selective_policy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
+    temporal_prune = odv2_mem0_temporal_prune_policy(
+        consolidator=MockConsolidator(),
+        encoder=FakeDenseEncoder(),
+    )
     recovery = odv2_recovery_policy(consolidator=MockConsolidator(), encoder=FakeDenseEncoder())
     dense_compact = odv2_dense_compact_policy(
         consolidator=MockConsolidator(),
@@ -51,6 +56,7 @@ def test_odv2_policy_presets_have_expected_names_and_backbones() -> None:
     assert dense.name == "odv2_dense"
     assert dense.hybrid_backbone.name == "dense"
     assert selective.name == "odv2_mem0_selective"
+    assert temporal_prune.name == "odv2_mem0_temporal_prune"
     assert recovery.name == "odv2_recovery"
     assert dense_compact.name == "odv2_dense_compact"
     assert dense_compact.hybrid_backbone.name == "dense"

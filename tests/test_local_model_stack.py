@@ -104,6 +104,7 @@ def test_prompt_builder_includes_question_and_memory() -> None:
     prompt = build_reasoning_prompt(_query(), _context())
     assert "Where does user_a live now?" in prompt.prompt
     assert "entity=user_a" in prompt.prompt
+    assert "Validity rule:" in prompt.prompt
     rendered = render_prompt(prompt)
     assert "System:" in rendered
 

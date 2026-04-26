@@ -29,9 +29,11 @@ def build_reasoning_prompt(
     ),
 ) -> PromptPackage:
     instruction = _instruction_for_query(query)
+    validity_rule = _validity_rule_for_query(query)
     memory_block = _format_context(context)
     user_prompt = (
         f"Task: {instruction}\n"
+        f"Validity rule: {validity_rule}\n"
         f"Question: {query.question}\n"
         f"Memory:\n{memory_block}\n"
         "Answer with a short span only.\n"
@@ -78,6 +80,24 @@ def _instruction_for_query(query: RuntimeQuery) -> str:
     if query.query_mode == QueryMode.CONFLICT_AWARE:
         return "Return the current value only if the latest evidence is not in conflict."
     return "Return the current valid value from memory."
+
+
+def _validity_rule_for_query(query: RuntimeQuery) -> str:
+    if query.query_mode == QueryMode.HISTORY:
+        return (
+            "Use the historically relevant record; older, superseded, or archived "
+            "records may be correct when the question asks about the past."
+        )
+    if query.query_mode == QueryMode.CONFLICT_AWARE:
+        return (
+            "If same-entity records conflict, answer only when ACTIVE or REINFORCED "
+            "latest evidence clearly resolves the conflict; otherwise ABSTAIN."
+        )
+    return (
+        "For current-state questions, prefer ACTIVE or REINFORCED records over "
+        "SUPERSEDED, ARCHIVED, or CONFLICTED records; when same-entity records "
+        "conflict, use the latest non-stale value."
+    )
 
 
 def _format_context(context: Sequence[MemoryRecord]) -> str:

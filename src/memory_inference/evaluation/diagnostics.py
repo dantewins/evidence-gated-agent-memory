@@ -50,6 +50,11 @@ def evaluated_case_to_diagnostic_row(
         "cache_hit": evaluated.reader_trace.cache_hit,
         "retrieval_mode": evaluated.retrieval_bundle.debug.get("retrieval_mode", ""),
         "base_retrieval_mode": evaluated.retrieval_bundle.debug.get("base_retrieval_mode", ""),
+        "validity_removed": _debug_int(evaluated, "validity_removed"),
+        "validity_appended": _debug_int(evaluated, "validity_appended"),
+        "temporal_pruned": _debug_int(evaluated, "temporal_pruned"),
+        "conflict_values": _debug_int(evaluated, "conflict_values"),
+        "decision_source": evaluated.retrieval_bundle.debug.get("decision_source", ""),
         "retrieved_records": [
             {
                 "record_id": record.record_id,
@@ -91,3 +96,11 @@ def write_diagnostic_jsonl(
 
 def _token_count(text: str) -> int:
     return len(text.split())
+
+
+def _debug_int(evaluated: EvaluatedCase, key: str) -> int:
+    raw_value = evaluated.retrieval_bundle.debug.get(key, "0")
+    try:
+        return int(raw_value)
+    except (TypeError, ValueError):
+        return 0
