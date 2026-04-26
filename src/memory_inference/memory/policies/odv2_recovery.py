@@ -45,7 +45,7 @@ class ODV2RecoveryPolicy(BaseMemoryPolicy):
             encoder=encoder,
             write_top_k=write_top_k,
             history_enabled=True,
-            archive_conflict_enabled=True,
+            archive_conflict_enabled=False,
         )
         self.episodic_log: list[MemoryRecord] = []
 
@@ -135,7 +135,7 @@ class ODV2RecoveryPolicy(BaseMemoryPolicy):
                 support_limit=self.support_history_limit,
                 max_entries=len(current_entries) + self.support_history_limit,
             )
-            records = self._dedupe(anchored + filtered_base)
+            records = self._dedupe(filtered_base + anchored)
             if query.query_mode == QueryMode.STATE_WITH_PROVENANCE:
                 records = self._dedupe(records + archive_entries[:1])
             return self._bundle(
