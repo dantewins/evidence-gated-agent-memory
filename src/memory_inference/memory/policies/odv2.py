@@ -28,6 +28,8 @@ class ODV2Policy(BaseMemoryPolicy):
         support_history_limit: int = 3,
         hybrid_backbone=None,
         broad_candidate_pool: bool = False,
+        prefer_exact_entity_when_available: bool = False,
+        compact_current_state: bool = False,
     ) -> None:
         super().__init__(name=name)
         self.support_history_limit = support_history_limit
@@ -45,6 +47,8 @@ class ODV2Policy(BaseMemoryPolicy):
                 support_history_limit=support_history_limit,
                 entity_matches=self._entity_matches,
                 broad_candidate_pool=broad_candidate_pool,
+                prefer_exact_entity_when_available=prefer_exact_entity_when_available,
+                compact_current_state=compact_current_state,
             )
             if hybrid_backbone is not None
             else None
@@ -99,13 +103,14 @@ class ODV2Policy(BaseMemoryPolicy):
 
     def retrieve_for_query(self, query: RuntimeQuery, top_k: int = 5) -> RetrievalBundle:
         if self.hybrid_ranker is not None:
+            hybrid_top_k = max(top_k, 8) if is_open_ended_query(query) else top_k
             return self.hybrid_ranker.retrieve(
                 query,
                 episodic_log=self.episodic_log,
                 current_entries=self._current_entries(query.entity, query.attribute),
                 archive_entries=self._archive_entries(query.entity, query.attribute),
                 conflict_entries=self._conflict_entries(query.entity, query.attribute),
-                top_k=max(top_k, 8),
+                top_k=hybrid_top_k,
                 policy_name=self.name,
             )
         if is_open_ended_query(query):

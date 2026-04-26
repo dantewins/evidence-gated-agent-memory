@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable, Protocol
 
+from memory_inference.domain.enums import QueryMode
 from memory_inference.memory.retrieval.query_routing import (
     has_structured_fact_candidates,
     is_open_ended_query,
@@ -52,9 +53,16 @@ class HybridBackbone(Protocol):
 
 
 class HybridCandidateBuilder:
-    def __init__(self, *, entity_matches, broad_candidate_pool: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        entity_matches,
+        broad_candidate_pool: bool = False,
+        prefer_exact_entity_when_available: bool = False,
+    ) -> None:
         self._entity_matches = entity_matches
         self._broad_candidate_pool = broad_candidate_pool
+        self._prefer_exact_entity_when_available = prefer_exact_entity_when_available
 
     def structured_candidates(
         self,
@@ -78,6 +86,7 @@ class HybridCandidateBuilder:
                 if self.is_structured_fact(entry)
                 and self._candidate_matches_query(entry, query)
             ]
+            episodic_structured = self._prefer_exact_entity_pool(episodic_structured, query)
             entries = list(current_entries) + list(archive_entries) + list(conflict_entries) + episodic_structured
         return self._dedupe(entries)
 
@@ -89,7 +98,8 @@ class HybridCandidateBuilder:
         anchor_source_ids: set[str],
         anchor_scopes: set[str],
     ) -> list[MemoryRecord]:
-        candidates: list[MemoryRecord] = []
+        exact_candidates: list[MemoryRecord] = []
+        broad_candidates: list[MemoryRecord] = []
         seen_ids: set[str] = set()
         for entry in episodic_log:
             if not self._candidate_entity_matches(entry.entity, query.entity):
@@ -105,8 +115,13 @@ class HybridCandidateBuilder:
                 or entry.attribute == query.attribute
             ):
                 seen_ids.add(entry.entry_id)
-                candidates.append(entry)
-        return candidates
+                if self._entity_matches(entry.entity, query.entity):
+                    exact_candidates.append(entry)
+                broad_candidates.append(entry)
+        return self._prefer_exact_entity_pool(
+            exact_candidates if exact_candidates else broad_candidates,
+            query,
+        )
 
     def fallback_candidates(
         self,
@@ -114,11 +129,12 @@ class HybridCandidateBuilder:
         *,
         episodic_log: Iterable[MemoryRecord],
     ) -> list[MemoryRecord]:
-        return self._dedupe(
+        candidates = self._dedupe(
             entry
             for entry in episodic_log
             if self._candidate_matches_query(entry, query)
         )
+        return self._prefer_exact_entity_pool(candidates, query)
 
     @staticmethod
     def anchor_source_ids(entries: Iterable[MemoryRecord]) -> set[str]:
@@ -181,6 +197,24 @@ class HybridCandidateBuilder:
             combined.append(entry)
         return combined
 
+    def _prefer_exact_entity_pool(
+        self,
+        entries: list[MemoryRecord],
+        query: RuntimeQuery,
+    ) -> list[MemoryRecord]:
+        if not self._prefer_exact_entity_when_available:
+            return entries
+        if query.entity in {"conversation", "all"}:
+            return entries
+        exact_matches = [
+            entry
+            for entry in entries
+            if self._entity_matches(entry.entity, query.entity)
+        ]
+        if exact_matches:
+            return exact_matches
+        return entries
+
 
 class HybridMergeStrategy:
     def merge(
@@ -189,9 +223,15 @@ class HybridMergeStrategy:
         state_entries: Iterable[MemoryRecord],
         evidence_entries: Iterable[MemoryRecord],
         top_k: int,
+        state_budget: int | None = None,
+        evidence_budget: int | None = None,
     ) -> list[MemoryRecord]:
-        state_budget = max(2, min(3, top_k // 3 + 1))
-        evidence_budget = max(1, top_k - state_budget)
+        resolved_state_budget = state_budget if state_budget is not None else max(2, min(3, top_k // 3 + 1))
+        resolved_evidence_budget = (
+            evidence_budget
+            if evidence_budget is not None
+            else max(1, top_k - resolved_state_budget)
+        )
         merged: list[MemoryRecord] = []
         seen_ids: set[str] = set()
 
@@ -200,7 +240,7 @@ class HybridMergeStrategy:
                 continue
             seen_ids.add(entry.entry_id)
             merged.append(entry)
-            if len(merged) >= state_budget:
+            if len(merged) >= resolved_state_budget:
                 break
 
         evidence_count = 0
@@ -210,7 +250,7 @@ class HybridMergeStrategy:
             seen_ids.add(entry.entry_id)
             merged.append(entry)
             evidence_count += 1
-            if evidence_count >= evidence_budget:
+            if evidence_count >= resolved_evidence_budget:
                 break
 
         if len(merged) >= top_k:
@@ -235,15 +275,19 @@ class HybridRanker:
         support_history_limit: int,
         entity_matches,
         broad_candidate_pool: bool = False,
+        prefer_exact_entity_when_available: bool = False,
+        compact_current_state: bool = False,
     ) -> None:
         self.backbone = backbone
         self.support_history_limit = support_history_limit
         self.builder = HybridCandidateBuilder(
             entity_matches=entity_matches,
             broad_candidate_pool=broad_candidate_pool,
+            prefer_exact_entity_when_available=prefer_exact_entity_when_available,
         )
         self.merge_strategy = HybridMergeStrategy()
         self._entity_matches = entity_matches
+        self._compact_current_state = compact_current_state
 
     def retrieve(
         self,
@@ -305,40 +349,45 @@ class HybridRanker:
                 query_context,
                 memory_kind=self.builder.memory_kind(entry),
             ),
-            limit=max(top_k * 12, 48),
-        )[:top_k]
+            limit=self._structured_limit(query, top_k),
+        )[: self._state_budget(query, top_k)]
 
         anchor_source_ids = self.builder.anchor_source_ids(structured_ranked)
         anchor_scopes = self.builder.anchor_scopes(structured_ranked)
-        evidence_candidates = self.builder.evidence_candidates(
-            query,
-            episodic_log=episodic_log,
-            anchor_source_ids=anchor_source_ids,
-            anchor_scopes=anchor_scopes,
-        )
-        evidence_ranked = self.backbone.rank(
-            query,
-            evidence_candidates,
-            score_fn=lambda entry, query_context: self.backbone.evidence_score(
-                entry,
+        evidence_budget = self._evidence_budget(query, top_k, structured_ranked)
+        evidence_ranked: list[MemoryRecord] = []
+        if evidence_budget > 0:
+            evidence_candidates = self.builder.evidence_candidates(
                 query,
-                query_context,
+                episodic_log=episodic_log,
                 anchor_source_ids=anchor_source_ids,
                 anchor_scopes=anchor_scopes,
-            ),
-            limit=max(top_k * 16, 64),
-        )[:top_k]
+            )
+            evidence_ranked = self.backbone.rank(
+                query,
+                evidence_candidates,
+                score_fn=lambda entry, query_context: self.backbone.evidence_score(
+                    entry,
+                    query,
+                    query_context,
+                    anchor_source_ids=anchor_source_ids,
+                    anchor_scopes=anchor_scopes,
+                ),
+                limit=self._evidence_limit(query, top_k),
+            )[:evidence_budget]
 
         merged = self.merge_strategy.merge(
             state_entries=structured_ranked,
             evidence_entries=evidence_ranked,
             top_k=top_k,
+            state_budget=self._state_budget(query, top_k),
+            evidence_budget=evidence_budget,
         )
         expanded = expand_with_support_entries(
             merged,
             episodic_log,
-            support_limit=self.support_history_limit,
-            max_entries=top_k + self.support_history_limit,
+            support_limit=self._support_limit(query),
+            max_entries=self._expanded_max_entries(query, top_k, merged),
         )
         return RetrievalBundle(
             records=expanded,
@@ -348,3 +397,54 @@ class HybridRanker:
                 "backbone": self.backbone.name,
             },
         )
+
+    def _structured_limit(self, query: RuntimeQuery, top_k: int) -> int:
+        if self._compact_current_state and query.query_mode != QueryMode.HISTORY:
+            return max(top_k * 4, 16)
+        return max(top_k * 12, 48)
+
+    def _evidence_limit(self, query: RuntimeQuery, top_k: int) -> int:
+        if self._compact_current_state and query.query_mode != QueryMode.HISTORY:
+            return max(top_k * 4, 16)
+        return max(top_k * 16, 64)
+
+    def _state_budget(self, query: RuntimeQuery, top_k: int) -> int:
+        if not self._compact_current_state or query.query_mode == QueryMode.HISTORY:
+            return min(top_k, max(2, min(3, top_k // 3 + 1)))
+        if query.query_mode == QueryMode.CONFLICT_AWARE:
+            return min(top_k, 3)
+        if query.query_mode == QueryMode.STATE_WITH_PROVENANCE:
+            return min(top_k, 3)
+        return min(top_k, 2)
+
+    def _evidence_budget(
+        self,
+        query: RuntimeQuery,
+        top_k: int,
+        structured_ranked: list[MemoryRecord],
+    ) -> int:
+        if not self._compact_current_state or query.query_mode == QueryMode.HISTORY:
+            return max(1, top_k - self._state_budget(query, top_k))
+        if query.query_mode == QueryMode.CONFLICT_AWARE:
+            return min(2, max(0, top_k - self._state_budget(query, top_k)))
+        if query.query_mode == QueryMode.STATE_WITH_PROVENANCE:
+            return 1
+        return 1
+
+    def _support_limit(self, query: RuntimeQuery) -> int:
+        if not self._compact_current_state or query.query_mode == QueryMode.HISTORY:
+            return self.support_history_limit
+        if query.query_mode == QueryMode.CONFLICT_AWARE:
+            return min(2, self.support_history_limit)
+        return 1
+
+    def _expanded_max_entries(
+        self,
+        query: RuntimeQuery,
+        top_k: int,
+        merged: list[MemoryRecord],
+    ) -> int:
+        if not self._compact_current_state or query.query_mode == QueryMode.HISTORY:
+            return top_k + self.support_history_limit
+        support_limit = self._support_limit(query)
+        return min(top_k, len(merged) + support_limit)

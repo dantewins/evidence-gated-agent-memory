@@ -122,6 +122,8 @@ def build_odv2_policy(
     support_history_limit: int = 3,
     hybrid_backbone=None,
     broad_candidate_pool: bool = False,
+    prefer_exact_entity_when_available: bool = False,
+    compact_current_state: bool = False,
 ) -> ODV2Policy:
     return ODV2Policy(
         name=name,
@@ -130,6 +132,8 @@ def build_odv2_policy(
         support_history_limit=support_history_limit,
         hybrid_backbone=hybrid_backbone,
         broad_candidate_pool=broad_candidate_pool,
+        prefer_exact_entity_when_available=prefer_exact_entity_when_available,
+        compact_current_state=compact_current_state,
     )
 
 
@@ -177,4 +181,6 @@ def odv2_dense_policy(
         support_history_limit=support_history_limit,
         hybrid_backbone=ODV2DenseBackboneRanker(encoder=encoder),
         broad_candidate_pool=True,
+        prefer_exact_entity_when_available=True,
+        compact_current_state=True,
     )
