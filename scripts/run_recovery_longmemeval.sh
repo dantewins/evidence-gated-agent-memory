@@ -44,4 +44,5 @@ COMMON_POLICIES=(
   --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
   "${COMMON_POLICIES[@]}" \
   --cache-dir .cache/memory_inference_longmemeval_recovery \
-  --output results/longmemeval_recovery.json
+  --output results/longmemeval_recovery.json \
+  --cases-output results/longmemeval_recovery_cases.jsonl

@@ -5,6 +5,7 @@ from typing import Callable, Iterable, List, Sequence
 
 from memory_inference.datasets.normalized_io import NormalizedDataset, NormalizedRecord
 from memory_inference.domain.results import EvaluatedCase
+from memory_inference.evaluation.diagnostics import diagnostic_rows, write_diagnostic_jsonl
 from memory_inference.evaluation.manifests import RunManifest, build_manifest, write_manifest
 from memory_inference.evaluation.metrics import ExperimentMetrics, compute_metrics
 from memory_inference.evaluation.scoring import evaluate_executed_cases
@@ -68,12 +69,15 @@ def run_dataset_experiment(
     policy_factories: Sequence[Callable[[], BaseMemoryPolicy]],
     manifest_config: dict[str, object] | None = None,
     manifest_output: str = "",
+    cases_output: str = "",
     include_environment: bool = True,
 ) -> DatasetExperimentResult:
     metric_rows: list[ExperimentMetrics] = []
+    all_evaluated_cases: list[EvaluatedCase] = []
     for factory in policy_factories:
         result = evaluate_structured_policy_full(factory, reasoner, dataset.records)
         metric_rows.append(result.metrics)
+        all_evaluated_cases.extend(result.evaluated_cases)
 
     manifest = None
     if manifest_output:
@@ -86,6 +90,12 @@ def run_dataset_experiment(
             include_environment=include_environment,
         )
         write_manifest(manifest_output, manifest)
+
+    if cases_output:
+        write_diagnostic_jsonl(
+            cases_output,
+            diagnostic_rows(all_evaluated_cases, benchmark=benchmark_name),
+        )
 
     return DatasetExperimentResult(
         benchmark=benchmark_name,

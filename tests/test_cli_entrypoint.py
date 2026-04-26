@@ -75,4 +75,5 @@ def test_cli_delegates_benchmark_execution_to_orchestration(tmp_path, monkeypatc
 
     assert calls["benchmark_name"] == "longmemeval"
     assert calls["manifest_output"] == ""
+    assert calls["cases_output"] == ""
     assert len(calls["policy_factories"]) == 1

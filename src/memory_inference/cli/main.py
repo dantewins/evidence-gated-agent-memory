@@ -42,6 +42,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         policy_factories=policy_factories,
         manifest_config=manifest_config(args),
         manifest_output=args.output,
+        cases_output=args.cases_output,
     )
     for row in result.metrics:
         print(
@@ -130,6 +131,7 @@ def manifest_config(args: argparse.Namespace) -> dict[str, object]:
         "input": args.input,
         "input_format": getattr(args, "input_format", "raw"),
         "cache_dir": getattr(args, "cache_dir", ""),
+        "cases_output": getattr(args, "cases_output", ""),
         "max_new_tokens": getattr(args, "max_new_tokens", None),
         "temperature": getattr(args, "temperature", None),
         "top_p": getattr(args, "top_p", None),
@@ -150,6 +152,7 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--model-id", default="")
     parser.add_argument("--cache-dir", default=".cache/memory_inference")
     parser.add_argument("--output", default="")
+    parser.add_argument("--cases-output", default="")
     parser.add_argument("--policy", action="append", default=[])
     parser.add_argument("--limit", type=int, default=None, help="Max records to process.")
     _add_local_model_args(parser)

@@ -63,9 +63,9 @@ def compute_metrics(
         for row in abstention_queries
         if row.prediction == ABSTAIN_TOKEN
     )
-    interference_count = sum(1 for row in rows if _has_proactive_interference(row))
-    stale_state_exposure_count = sum(1 for row in rows if _has_stale_state_exposure(row))
-    retrieval_hit_count = sum(1 for row in rows if _has_retrieval_hit(row))
+    interference_count = sum(1 for row in rows if case_has_proactive_interference(row))
+    stale_state_exposure_count = sum(1 for row in rows if case_has_stale_state_exposure(row))
+    retrieval_hit_count = sum(1 for row in rows if case_has_retrieval_hit(row))
     avg_items = sum(len(row.retrieval_bundle.records) for row in rows) / total if total else 0.0
     avg_chars = (
         sum(sum(len(record.text()) for record in row.retrieval_bundle.records) for row in rows) / total
@@ -126,7 +126,7 @@ def compute_metrics(
     )
 
 
-def _has_proactive_interference(row: EvaluatedCase) -> bool:
+def case_has_proactive_interference(row: EvaluatedCase) -> bool:
     mismatched = [
         record for record in row.retrieval_bundle.records
         if _record_matches_query_key(record, row)
@@ -135,7 +135,7 @@ def _has_proactive_interference(row: EvaluatedCase) -> bool:
     return bool(mismatched and not answers_span_match(row.prediction, row.case.eval_target.gold_answer))
 
 
-def _has_stale_state_exposure(row: EvaluatedCase) -> bool:
+def case_has_stale_state_exposure(row: EvaluatedCase) -> bool:
     query = row.case.runtime_query
     if query.query_mode not in {QueryMode.CURRENT_STATE, QueryMode.STATE_WITH_PROVENANCE}:
         return False
@@ -149,7 +149,7 @@ def _has_stale_state_exposure(row: EvaluatedCase) -> bool:
     )
 
 
-def _has_retrieval_hit(row: EvaluatedCase) -> bool:
+def case_has_retrieval_hit(row: EvaluatedCase) -> bool:
     return any(
         _record_matches_query_key(record, row)
         and (
