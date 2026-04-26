@@ -29,21 +29,8 @@ from memory_inference.memory.policies.interface import BaseMemoryPolicy
 PolicyFactory = Callable[[], BaseMemoryPolicy]
 
 PAPER_POLICY_NAMES: tuple[str, ...] = (
-    "strong_retrieval",
-    "dense_retrieval",
     "mem0",
-    "mem0_archive_conflict",
-    "mem0_history_aware",
-    "mem0_all_features",
-    "mem0_validity_guard",
-    "odv2_mem0_hybrid",
     "odv2_mem0_selective",
-    "odv2_mem0_temporal_prune",
-    "odv2_recovery",
-    "offline_delta_v2",
-    "odv2_strong",
-    "odv2_dense",
-    "odv2_dense_compact",
 )
 
 DEBUG_POLICY_NAMES: tuple[str, ...] = (

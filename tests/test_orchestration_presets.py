@@ -14,8 +14,9 @@ from memory_inference.memory.policies.odv2_recovery import ODV2RecoveryPolicy
 def test_policy_preset_groups_are_purpose_specific() -> None:
     assert PAPER_POLICY_NAMES != DEBUG_POLICY_NAMES
     assert PAPER_POLICY_NAMES != TEST_POLICY_NAMES
+    assert PAPER_POLICY_NAMES == ("mem0", "odv2_mem0_selective")
     assert "append_only" not in PAPER_POLICY_NAMES
-    assert "strong_retrieval" in PAPER_POLICY_NAMES
+    assert "strong_retrieval" not in PAPER_POLICY_NAMES
     assert "append_only" in DEBUG_POLICY_NAMES
     assert "offline_delta_v2" in TEST_POLICY_NAMES
 

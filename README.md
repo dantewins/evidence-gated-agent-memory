@@ -98,6 +98,30 @@ The evaluation path in this repository is focused on two real conversational mem
 
 Those runs are evaluated with downstream task metrics such as QA accuracy, context size, and latency under a frozen reader. The main comparison is therefore between memory policies, not between custom benchmark generators.
 
+## Final reporting path
+
+The current boss-facing comparison is intentionally narrow:
+
+- baseline: `mem0`
+- target: `odv2_mem0_selective`
+- primary slice: LongMemEval `knowledge-update`
+
+Run and compile the result:
+
+```bash
+bash scripts/run_longmemeval_slice.sh knowledge-update
+```
+
+Compile an existing result without rerunning the benchmark:
+
+```bash
+python scripts/compile_boss_results.py results/longmemeval_knowledge-update_cases.jsonl
+```
+
+The report is designed to answer one question clearly: does ODV2 preserve Mem0
+accuracy while improving a secondary metric such as prompt context or stale
+state exposure?
+
 ## Repository implementation
 
 This repository serves as the experimental scaffold for that research direction. It currently includes:

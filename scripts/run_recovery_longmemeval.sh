@@ -24,16 +24,8 @@ INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-12}"
 LONGMEMEVAL_INPUT="${LONGMEMEVAL_INPUT:-data/longmemeval_s_cleaned.json}"
 
 COMMON_POLICIES=(
-  --policy strong_retrieval
-  --policy dense_retrieval
   --policy mem0
-  --policy mem0_validity_guard
-  --policy odv2_mem0_hybrid
   --policy odv2_mem0_selective
-  --policy odv2_mem0_temporal_prune
-  --policy odv2_recovery
-  --policy odv2_dense
-  --policy odv2_dense_compact
 )
 
 "${PYTHON_BIN}" -m memory_inference.cli longmemeval \
@@ -48,3 +40,5 @@ COMMON_POLICIES=(
   --cache-dir .cache/memory_inference_longmemeval_recovery \
   --output results/longmemeval_recovery.json \
   --cases-output results/longmemeval_recovery_cases.jsonl
+
+"${PYTHON_BIN}" scripts/compile_boss_results.py results/longmemeval_recovery_cases.jsonl

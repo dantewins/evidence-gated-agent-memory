@@ -35,21 +35,13 @@ fi
   --device cuda \
   --dtype bfloat16 \
   --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
-  --policy strong_retrieval \
-  --policy dense_retrieval \
   --policy mem0 \
-  --policy mem0_validity_guard \
-  --policy odv2_mem0_hybrid \
   --policy odv2_mem0_selective \
-  --policy odv2_mem0_temporal_prune \
-  --policy odv2_recovery \
-  --policy offline_delta_v2 \
-  --policy odv2_strong \
-  --policy odv2_dense \
-  --policy odv2_dense_compact \
   --cache-dir .cache/memory_inference_longmemeval_final \
   --output results/longmemeval_qwen25_7b_final.json \
   --cases-output results/longmemeval_qwen25_7b_final_cases.jsonl
+
+"${PYTHON_BIN}" scripts/compile_boss_results.py results/longmemeval_qwen25_7b_final_cases.jsonl
 
 "${PYTHON_BIN}" -m memory_inference.cli locomo \
   --input data/locomo10.json \
@@ -59,18 +51,10 @@ fi
   --device cuda \
   --dtype bfloat16 \
   --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
-  --policy strong_retrieval \
-  --policy dense_retrieval \
   --policy mem0 \
-  --policy mem0_validity_guard \
-  --policy odv2_mem0_hybrid \
   --policy odv2_mem0_selective \
-  --policy odv2_mem0_temporal_prune \
-  --policy odv2_recovery \
-  --policy offline_delta_v2 \
-  --policy odv2_strong \
-  --policy odv2_dense \
-  --policy odv2_dense_compact \
   --cache-dir .cache/memory_inference_locomo_final \
   --output results/locomo_qwen25_7b_final.json \
   --cases-output results/locomo_qwen25_7b_final_cases.jsonl
+
+"${PYTHON_BIN}" scripts/compile_boss_results.py results/locomo_qwen25_7b_final_cases.jsonl

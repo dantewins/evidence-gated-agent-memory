@@ -7,20 +7,19 @@ defensible research question is:
 > When does explicit validity maintenance help or hurt long-horizon agent memory,
 > and how should that tradeoff be measured beyond raw QA accuracy?
 
-The key outputs are now:
+The boss-facing output is now a single Markdown report:
 
-- aggregate manifest metrics: accuracy, exact accuracy, context cost, latency
-- validity diagnostics: retrieval hit rate and stale-state exposure rate
-- per-query JSONL diagnostics for paired policy comparisons
-- validity-conditioned slices: baseline stale exposure, same-key conflicts, and
-  cases where an ODV2 validity intervention actually fired
+```bash
+python scripts/compile_boss_results.py results/longmemeval_knowledge-update_cases.jsonl
+```
+
+It reports only the final comparison: `mem0` vs `odv2_mem0_selective`.
 
 ## Run
 
 ```bash
-bash scripts/run_recovery_locomo.sh
-python scripts/summarize_diagnostics.py results/locomo_recovery_cases.jsonl mem0
-python scripts/summarize_validity_slices.py results/locomo_recovery_cases.jsonl mem0
+bash scripts/run_longmemeval_slice.sh knowledge-update
+bash scripts/run_longmemeval_slice.sh temporal-reasoning
 ```
 
 For LongMemEval iteration, use a small limit before running the full set:
@@ -35,8 +34,7 @@ PYTHONPATH=src python -m memory_inference.cli longmemeval \
   --device cuda \
   --dtype bfloat16 \
   --policy mem0 \
-  --policy odv2_mem0_temporal_prune \
-  --policy odv2_dense_compact \
+  --policy odv2_mem0_selective \
   --cache-dir .cache/memory_inference_longmemeval_debug \
   --output results/longmemeval_debug_25.json \
   --cases-output results/longmemeval_debug_25_cases.jsonl
@@ -62,9 +60,7 @@ bash scripts/run_longmemeval_slice.sh knowledge-update
 bash scripts/run_longmemeval_slice.sh temporal-reasoning
 ```
 
-The highest-priority comparisons are `odv2_mem0_selective` and
-`odv2_mem0_temporal_prune` against `mem0`. `odv2_mem0_selective` preserves Mem0
-retrieval by default and only applies the ODV2 ledger when it can confidently
-suppress stale same-key state. `odv2_mem0_temporal_prune` is stricter: it never
-adds records and only removes older same-key state when Mem0 itself retrieved a
-contradiction.
+The highest-priority comparison is `odv2_mem0_selective` against `mem0`.
+`odv2_mem0_selective` preserves Mem0 retrieval by default and only applies the
+ODV2 ledger when it can confidently suppress stale same-key state or compact
+redundant support evidence.

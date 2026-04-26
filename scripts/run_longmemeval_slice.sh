@@ -36,13 +36,9 @@ LONGMEMEVAL_INPUT="${LONGMEMEVAL_INPUT:-data/longmemeval_s_cleaned.json}"
   --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
   --policy mem0 \
   --policy odv2_mem0_selective \
-  --policy odv2_mem0_temporal_prune \
-  --policy odv2_recovery \
-  --policy odv2_dense_compact \
   --category "${SLICE_NAME}" \
   --cache-dir ".cache/memory_inference_longmemeval_${SAFE_SLICE_NAME}" \
   --output "results/longmemeval_${SAFE_SLICE_NAME}.json" \
   --cases-output "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl"
 
-"${PYTHON_BIN}" scripts/summarize_diagnostics.py "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl" mem0
-"${PYTHON_BIN}" scripts/summarize_validity_slices.py "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl" mem0
+"${PYTHON_BIN}" scripts/compile_boss_results.py "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl"
