@@ -2,6 +2,8 @@ import json
 import importlib
 
 from memory_inference.cli import main as cli_main
+from memory_inference.cli.main import filter_dataset
+from memory_inference.datasets.preprocessing import load_raw_longmemeval_dataset
 from memory_inference.evaluation.metrics import ExperimentMetrics
 from memory_inference.orchestration.experiment import DatasetExperimentResult
 
@@ -16,7 +18,16 @@ def _raw_longmemeval_payload() -> list[dict]:
             "haystack_sessions": [{"role": "user", "content": "I moved to Boston."}],
             "haystack_session_ids": ["sess_1"],
             "haystack_dates": ["2024-01-20"],
-        }
+        },
+        {
+            "question_id": "q_002",
+            "question_type": "temporal-reasoning",
+            "question": "Where did the user live before Boston?",
+            "answer": "Seattle",
+            "haystack_sessions": [{"role": "user", "content": "I lived in Seattle before Boston."}],
+            "haystack_session_ids": ["sess_2"],
+            "haystack_dates": ["2024-01-19"],
+        },
     ]
 
 
@@ -77,3 +88,25 @@ def test_cli_delegates_benchmark_execution_to_orchestration(tmp_path, monkeypatc
     assert calls["manifest_output"] == ""
     assert calls["cases_output"] == ""
     assert len(calls["policy_factories"]) == 1
+
+
+def test_filter_dataset_keeps_requested_categories_and_query_modes(tmp_path) -> None:
+    source = tmp_path / "longmemeval.json"
+    source.write_text(json.dumps(_raw_longmemeval_payload()))
+    dataset = load_raw_longmemeval_dataset(source)
+
+    category_filtered = filter_dataset(
+        dataset,
+        categories=["knowledge-update"],
+        query_modes=[],
+    )
+    mode_filtered = filter_dataset(
+        dataset,
+        categories=[],
+        query_modes=["HISTORY"],
+    )
+
+    assert category_filtered.total_cases == 1
+    assert category_filtered.records[0].cases[0].case_id == "q_001"
+    assert mode_filtered.total_cases == 1
+    assert mode_filtered.records[0].cases[0].case_id == "q_002"

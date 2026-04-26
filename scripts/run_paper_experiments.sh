@@ -40,6 +40,7 @@ fi
   --policy mem0 \
   --policy mem0_validity_guard \
   --policy odv2_mem0_hybrid \
+  --policy odv2_mem0_selective \
   --policy odv2_recovery \
   --policy offline_delta_v2 \
   --policy odv2_strong \
@@ -62,6 +63,7 @@ fi
   --policy mem0 \
   --policy mem0_validity_guard \
   --policy odv2_mem0_hybrid \
+  --policy odv2_mem0_selective \
   --policy odv2_recovery \
   --policy offline_delta_v2 \
   --policy odv2_strong \

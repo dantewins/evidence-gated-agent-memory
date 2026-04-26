@@ -49,3 +49,16 @@ PYTHONPATH=src python -m memory_inference.cli longmemeval \
 
 The paper claim should be built around these tradeoffs, not around benchmark
 dominance.
+
+## Validity-Sensitive Slices
+
+Run the LongMemEval categories most aligned with ODV2:
+
+```bash
+bash scripts/run_longmemeval_slice.sh knowledge-update
+bash scripts/run_longmemeval_slice.sh temporal-reasoning
+```
+
+The highest-priority comparison is `odv2_mem0_selective` against `mem0`.
+`odv2_mem0_selective` preserves Mem0 retrieval by default and only applies the
+ODV2 ledger when it can confidently suppress stale same-key state.

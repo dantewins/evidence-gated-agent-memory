@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import sys
+import types
 from pathlib import Path
 from typing import Sequence
 
@@ -13,12 +15,18 @@ from memory_inference.datasets.preprocessing import (
     preprocess_locomo,
     preprocess_longmemeval,
 )
+from memory_inference.domain.enums import QueryMode
 from memory_inference.llm.deterministic_reader import DeterministicValidityReader
 from memory_inference.llm.fixed_prompt_reader import FixedPromptReader
 from memory_inference.llm.local_config import LocalModelConfig
 from memory_inference.llm.local_hf_reasoner import LocalHFReasoner
 from memory_inference.orchestration.experiment import run_dataset_experiment
 from memory_inference.orchestration.presets import all_policy_factories, policy_factories_for_names
+
+
+class _CallableCliModule(types.ModuleType):
+    def __call__(self, argv: Sequence[str] | None = None) -> None:
+        main(argv)
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -34,6 +42,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     reasoner = build_reasoner(args)
     dataset = load_dataset(args)
+    dataset = filter_dataset(dataset, categories=args.category, query_modes=args.query_mode)
     policy_factories = select_policy_factories(args.policy)
     result = run_dataset_experiment(
         benchmark_name=args.command,
@@ -117,6 +126,88 @@ def load_dataset(args: argparse.Namespace) -> NormalizedDataset:
     raise ValueError(f"Unsupported benchmark command: {args.command}")
 
 
+def filter_dataset(
+    dataset: NormalizedDataset,
+    *,
+    categories: Sequence[str],
+    query_modes: Sequence[str],
+) -> NormalizedDataset:
+    if not categories and not query_modes:
+        return dataset
+
+    category_set = {category.strip().lower() for category in categories if category.strip()}
+    query_mode_set = {
+        _normalize_query_mode_name(query_mode)
+        for query_mode in query_modes
+        if query_mode.strip()
+    }
+    filtered_records = []
+    total_updates = 0
+    total_cases = 0
+
+    for record in dataset.records:
+        cases = [
+            case
+            for case in record.cases
+            if _case_matches_filters(
+                case,
+                categories=category_set,
+                query_modes=query_mode_set,
+            )
+        ]
+        if not cases:
+            continue
+        filtered_records.append(
+            type(record)(
+                schema_version=record.schema_version,
+                source_dataset=record.source_dataset,
+                source_split=record.source_split,
+                source_record_id=record.source_record_id,
+                context=record.context,
+                cases=cases,
+                preprocessing_metadata=record.preprocessing_metadata,
+            )
+        )
+        total_updates += len(record.context.updates)
+        total_cases += len(cases)
+
+    return NormalizedDataset(
+        schema_version=dataset.schema_version,
+        source_dataset=dataset.source_dataset,
+        source_split=dataset.source_split,
+        records=filtered_records,
+        total_contexts=len(filtered_records),
+        total_updates=total_updates,
+        total_cases=total_cases,
+        dropped_records=dataset.dropped_records,
+        warnings=list(dataset.warnings),
+        benchmark_source_version=dataset.benchmark_source_version,
+        annotation_version=dataset.annotation_version,
+        compiler_version=dataset.compiler_version,
+    )
+
+
+def _case_matches_filters(case, *, categories: set[str], query_modes: set[str]) -> bool:
+    if categories:
+        category = (
+            case.eval_target.benchmark_category
+            or case.metadata.get("question_category", "")
+        )
+        if str(category).strip().lower() not in categories:
+            return False
+    if query_modes and case.runtime_query.query_mode.name not in query_modes:
+        return False
+    return True
+
+
+def _normalize_query_mode_name(value: str) -> str:
+    normalized = value.strip().upper().replace("-", "_")
+    if normalized not in QueryMode.__members__:
+        valid = ", ".join(QueryMode.__members__)
+        raise ValueError(f"Unknown query mode {value!r}; expected one of: {valid}")
+    return normalized
+
+
 def select_policy_factories(policy_names: Sequence[str]):
     if not policy_names:
         return all_policy_factories()
@@ -128,6 +219,8 @@ def manifest_config(args: argparse.Namespace) -> dict[str, object]:
         "reasoner": args.reasoner,
         "model_id": args.model_id,
         "policy": list(args.policy),
+        "category": list(getattr(args, "category", [])),
+        "query_mode": list(getattr(args, "query_mode", [])),
         "input": args.input,
         "input_format": getattr(args, "input_format", "raw"),
         "cache_dir": getattr(args, "cache_dir", ""),
@@ -154,6 +247,8 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--output", default="")
     parser.add_argument("--cases-output", default="")
     parser.add_argument("--policy", action="append", default=[])
+    parser.add_argument("--category", action="append", default=[], help="Keep only benchmark category.")
+    parser.add_argument("--query-mode", action="append", default=[], help="Keep only query mode enum name.")
     parser.add_argument("--limit", type=int, default=None, help="Max records to process.")
     _add_local_model_args(parser)
 
@@ -174,3 +269,5 @@ def _add_local_model_args(parser: argparse.ArgumentParser) -> None:
 
 if __name__ == "__main__":
     main()
+else:
+    sys.modules[__name__].__class__ = _CallableCliModule

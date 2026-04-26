@@ -3,6 +3,7 @@ from __future__ import annotations
 from memory_inference.llm.consolidator_base import BaseConsolidator
 from memory_inference.memory.retrieval.semantic import DenseEncoder
 from memory_inference.memory.policies.mem0 import Mem0Policy
+from memory_inference.memory.policies.odv2_mem0_selective import ODV2Mem0SelectivePolicy
 from memory_inference.memory.policies.odv2 import ODV2Policy
 from memory_inference.memory.policies.odv2_mem0_hybrid import ODV2Mem0HybridPolicy
 from memory_inference.memory.policies.odv2_recovery import ODV2RecoveryPolicy
@@ -130,6 +131,22 @@ def odv2_recovery_policy(
         write_top_k=write_top_k,
         importance_threshold=importance_threshold,
         support_history_limit=support_history_limit,
+    )
+
+
+def odv2_mem0_selective_policy(
+    *,
+    consolidator: BaseConsolidator,
+    encoder: DenseEncoder | None = None,
+    write_top_k: int = 10,
+    importance_threshold: float = 0.1,
+) -> ODV2Mem0SelectivePolicy:
+    return ODV2Mem0SelectivePolicy(
+        name="odv2_mem0_selective",
+        consolidator=consolidator,
+        encoder=encoder,
+        write_top_k=write_top_k,
+        importance_threshold=importance_threshold,
     )
 
 

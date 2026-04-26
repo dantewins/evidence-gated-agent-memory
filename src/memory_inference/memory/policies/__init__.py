@@ -15,6 +15,7 @@ from memory_inference.memory.policies.dense import DenseRetrievalMemoryPolicy
 from memory_inference.memory.policies.mem0 import Mem0Policy
 from memory_inference.memory.policies.odv2 import ODV2Policy
 from memory_inference.memory.policies.odv2_mem0_hybrid import ODV2Mem0HybridPolicy
+from memory_inference.memory.policies.odv2_mem0_selective import ODV2Mem0SelectivePolicy
 from memory_inference.memory.policies.odv2_recovery import ODV2RecoveryPolicy
 from memory_inference.memory.policies.validity_guard import Mem0ValidityGuardPolicy
 from memory_inference.memory.policies.presets import (
@@ -26,6 +27,7 @@ from memory_inference.memory.policies.presets import (
     mem0_policy,
     mem0_validity_guard_policy,
     odv2_mem0_hybrid_policy,
+    odv2_mem0_selective_policy,
     odv2_recovery_policy,
     odv2_dense_compact_policy,
     odv2_dense_policy,
@@ -43,6 +45,7 @@ __all__ = [
     "Mem0ValidityGuardPolicy",
     "ODV2Policy",
     "ODV2Mem0HybridPolicy",
+    "ODV2Mem0SelectivePolicy",
     "ODV2RecoveryPolicy",
     "RecencySalienceMemoryPolicy",
     "ScoredBaselinePolicy",
@@ -59,6 +62,7 @@ __all__ = [
     "mem0_policy",
     "mem0_validity_guard_policy",
     "odv2_mem0_hybrid_policy",
+    "odv2_mem0_selective_policy",
     "odv2_recovery_policy",
     "odv2_dense_compact_policy",
     "odv2_dense_policy",
