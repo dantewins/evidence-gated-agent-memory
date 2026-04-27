@@ -1,0 +1,3 @@
+benchmark,category,comparison,slice,n,delta_accuracy,delta_stale_exposure,delta_prompt_tokens,wins,losses,verdict,boss_claim
+longmemeval,knowledge-update,odv2_mem0_selective_vs_mem0,ODV2 intervened,6,0.000,0.000,-256.33,0,0,usable,"ODV2 selective retrieval intervened without changing Mem0 correctness or stale exposure, while reducing prompt context by 256.33 tokens per query."
+longmemeval,knowledge-update,odv2_mem0_selective_vs_mem0,Mem0 exposed stale state,4,0.000,0.000,-310.25,0,0,usable,"On cases where Mem0 exposed stale state, ODV2 selective retrieval preserved correctness with no paired losses while reducing prompt context by 310.25 tokens per query."
