@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+from csv import DictWriter
 from collections import defaultdict
 from pathlib import Path
 from typing import Iterable
@@ -14,14 +15,58 @@ Row = dict[str, object]
 
 def main(argv: list[str]) -> int:
     if not argv:
-        print("usage: python scripts/compile_boss_results.py <cases.jsonl> [<cases.jsonl> ...]")
+        print("usage: python scripts/compile_boss_results.py [--csv] <cases.jsonl> [<cases.jsonl> ...]")
+        return 1
+    csv_mode = False
+    if argv[0] == "--csv":
+        csv_mode = True
+        argv = argv[1:]
+    if not argv:
+        print("usage: python scripts/compile_boss_results.py [--csv] <cases.jsonl> [<cases.jsonl> ...]")
         return 1
     try:
-        print(render_report([Path(path) for path in argv]))
+        paths = [Path(path) for path in argv]
+        if csv_mode:
+            write_csv_report(paths)
+        else:
+            print(render_report(paths))
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0
+
+
+def write_csv_report(paths: list[Path]) -> None:
+    reports = [_compile_file(path) for path in paths]
+    fieldnames = [
+        "result",
+        "slice",
+        "n",
+        "mem0_accuracy",
+        "odv2_accuracy",
+        "delta_accuracy",
+        "mem0_stale_exposure",
+        "odv2_stale_exposure",
+        "delta_stale_exposure",
+        "mem0_prompt_tokens",
+        "odv2_prompt_tokens",
+        "delta_prompt_tokens",
+        "wins",
+        "losses",
+        "both_wrong",
+        "verdict",
+        "claim",
+    ]
+    writer = DictWriter(sys.stdout, fieldnames=fieldnames)
+    writer.writeheader()
+    for report in reports:
+        for key, slice_name in (
+            ("all_paired", "all paired cases"),
+            ("validity_intervened", "ODV2 intervened"),
+            ("baseline_stale_exposure", "Mem0 exposed stale state"),
+            ("baseline_same_key_conflict", "Mem0 same-key conflict"),
+        ):
+            writer.writerow(_csv_row(str(report["label"]), slice_name, report[key]))
 
 
 def render_report(paths: list[Path]) -> str:
@@ -246,6 +291,38 @@ def _slice_row(label: str, summary: dict[str, object]) -> str:
         f"{int(summary['losses'])} | "
         f"{_verdict(summary)} |"
     )
+
+
+def _csv_row(result_label: str, slice_name: str, summary: dict[str, object]) -> dict[str, object]:
+    return {
+        "result": result_label,
+        "slice": slice_name,
+        "n": int(summary["n"]),
+        "mem0_accuracy": f"{float(summary['baseline_acc']):.3f}",
+        "odv2_accuracy": f"{float(summary['target_acc']):.3f}",
+        "delta_accuracy": f"{float(summary['delta_acc']):.3f}",
+        "mem0_stale_exposure": f"{float(summary['baseline_stale']):.3f}",
+        "odv2_stale_exposure": f"{float(summary['target_stale']):.3f}",
+        "delta_stale_exposure": f"{float(summary['delta_stale']):.3f}",
+        "mem0_prompt_tokens": f"{float(summary['baseline_ctx']):.2f}",
+        "odv2_prompt_tokens": f"{float(summary['target_ctx']):.2f}",
+        "delta_prompt_tokens": f"{float(summary['delta_ctx']):.2f}",
+        "wins": int(summary["wins"]),
+        "losses": int(summary["losses"]),
+        "both_wrong": int(summary["both_wrong"]),
+        "verdict": _verdict(summary),
+        "claim": _claim_for_summary(summary),
+    }
+
+
+def _claim_for_summary(summary: dict[str, object]) -> str:
+    if _is_usable(summary):
+        return "Preserves Mem0 accuracy with no paired losses while reducing prompt context or stale exposure."
+    if int(summary["n"]) == 0:
+        return "No cases in this slice."
+    if int(summary["losses"]) > 0 or float(summary["delta_acc"]) < 0.0:
+        return "Not a positive result; ODV2 hurts paired accuracy or introduces losses."
+    return "Neutral result; no clear improvement over Mem0."
 
 
 def _claim_text(reports: list[dict[str, object]]) -> str:

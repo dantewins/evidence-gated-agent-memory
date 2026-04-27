@@ -1,5 +1,7 @@
 import importlib.util
 import json
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 
@@ -45,6 +47,31 @@ def test_compile_boss_results_reports_usable_efficiency_claim(tmp_path) -> None:
     assert "| longmemeval:knowledge-update | 2 | 0.500 | 0.500 | 0.000 | 0.000 | -20.00 | 0 | 0 | usable |" in report
     assert "| ODV2 intervened | 1 | 0.000 | 0.000 | -20.00 | 0 | 0 | usable |" in report
     assert "| Mem0 same-key conflict | 1 | 0.000 | 0.000 | -20.00 | 0 | 0 | usable |" in report
+
+
+def test_compile_boss_results_exports_csv(tmp_path) -> None:
+    cases_path = tmp_path / "cases.jsonl"
+    rows = [
+        _row("mem0", "c1", correct=True, prompt_tokens=100),
+        _row(
+            "odv2_mem0_selective",
+            "c1",
+            correct=True,
+            prompt_tokens=80,
+            retrieval_mode="odv2_mem0_selective_compact",
+            support_compacted=1,
+        ),
+    ]
+    cases_path.write_text("\n".join(json.dumps(row) for row in rows))
+
+    buffer = StringIO()
+    with redirect_stdout(buffer):
+        _load_module().write_csv_report([cases_path])
+    csv_output = buffer.getvalue()
+
+    assert "result,slice,n,mem0_accuracy,odv2_accuracy,delta_accuracy" in csv_output
+    assert "longmemeval:knowledge-update,all paired cases,1,1.000,1.000,0.000" in csv_output
+    assert "longmemeval:knowledge-update,ODV2 intervened,1,1.000,1.000,0.000" in csv_output
 
 
 def _row(
