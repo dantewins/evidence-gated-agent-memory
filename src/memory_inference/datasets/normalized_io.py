@@ -157,6 +157,7 @@ def _restore_runtime_query(payload: dict[str, Any]) -> RuntimeQuery:
         multi_attributes=multi_attributes,
         query_mode=query_mode,
         supports_abstention=bool(payload.get("supports_abstention", False)),
+        metadata=_restore_string_dict(payload.get("metadata", {})),
     )
 
 

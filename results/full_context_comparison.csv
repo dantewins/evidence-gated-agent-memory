@@ -1,6 +1,13 @@
 benchmark,category_or_slice,scope,method,n,accuracy,exact_accuracy,retrieval_hit,stale_exposure,context_tokens,memory_tokens,latency_ms,delta_accuracy_vs_mem0,delta_stale_vs_mem0,delta_context_tokens_vs_mem0,wins_vs_mem0,losses_vs_mem0,verdict,interpretation
 LongMemEval,knowledge-update,usable_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,6,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-256.33,0,0,usable,Positive slice where ODV2 reduces context with no paired losses
 LongMemEval,knowledge-update,usable_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,4,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-310.25,0,0,usable,Positive stale exposure slice with no paired losses
+LongMemEval,single-session-preference,usable_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,1,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-148.00,0,0,usable,Small positive slice where ODV2 reduces context with no paired losses
+LongMemEval,single-session-preference,usable_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,1,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-148.00,0,0,usable,Small stale exposure slice with no paired losses
+LongMemEval,multi-session,comparison_summary,odv2_mem0_selective_vs_mem0__all_paired,133,0.143,0.143,NA,NA,NA,NA,NA,0.000,0.000,-39.70,1,1,not_usable,Equal aggregate accuracy but paired wins and losses cancel
+LongMemEval,multi-session,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,23,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-229.57,1,1,not_usable,Context reduction but paired loss makes this unsafe
+LongMemEval,multi-session,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,23,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-229.57,1,1,not_usable,Context reduction but paired loss makes stale slice unsafe
+LongMemEval,single-session-user,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,8,NA,NA,NA,NA,NA,NA,NA,-0.125,0.000,-475.25,0,1,not_usable,Large context reduction but accuracy loss makes this unsafe
+LongMemEval,single-session-user,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,7,NA,NA,NA,NA,NA,NA,NA,-0.143,0.000,-521.43,0,1,not_usable,Stale slice has paired loss and cannot support positive claim
 LongMemEval,temporal-reasoning,aggregate,mem0,133,0.226,0.113,0.008,0.000,1438.10,670.85,NA,0.000,0.000,0.00,0,0,baseline,Mem0 baseline for temporal reasoning
 LongMemEval,temporal-reasoning,aggregate,odv2_mem0_selective,133,0.135,0.053,0.045,0.000,1062.54,216.17,NA,-0.090,0.000,-375.56,7,19,not_usable,Context drops but accuracy loss is too large
 LongMemEval,temporal-reasoning,aggregate,odv2_dense_compact,133,0.150,0.075,0.045,0.000,1067.06,291.89,NA,-0.075,0.000,-371.04,7,17,not_usable,Lower context but lower accuracy than Mem0

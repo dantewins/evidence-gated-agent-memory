@@ -11,6 +11,11 @@ from memory_inference.memory.policies.mem0 import Mem0Policy
 from memory_inference.memory.policies.odv2 import ODV2Policy
 from memory_inference.memory.retrieval.semantic import DenseEncoder
 
+_SAFE_INTERVENTION_CATEGORIES = frozenset({
+    "knowledge-update",
+    "single-session-preference",
+})
+
 
 class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
     """Mem0-first retrieval with conservative ODV2 stale-state suppression.
@@ -99,6 +104,10 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
         if query.query_mode == QueryMode.HISTORY or query.attribute in {"dialogue", "event"}:
             return self._bundle(base_records, base=base, retrieval_mode="odv2_mem0_selective_passthrough")
 
+        if not self._category_allows_intervention(query):
+            return self._bundle(base_records, base=base, retrieval_mode="odv2_mem0_selective_passthrough")
+
+        support_compacted = 0
         base_records, support_compacted = self._compact_redundant_support(base_records, query)
 
         current_entries = self.validity.current_entries_for_query(query)
@@ -258,6 +267,13 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
                 continue
             compacted.append(record)
         return compacted, removed
+
+    @staticmethod
+    def _category_allows_intervention(query: RuntimeQuery) -> bool:
+        category = query.metadata.get("benchmark_category", "").strip().lower()
+        if not category:
+            return True
+        return category in _SAFE_INTERVENTION_CATEGORIES
 
     def _bundle(
         self,

@@ -17,6 +17,7 @@ class RuntimeQuery:
     multi_attributes: tuple[str, ...] = ()
     query_mode: QueryMode = field(default=QueryMode.CURRENT_STATE)
     supports_abstention: bool = False
+    metadata: dict[str, str] = field(default_factory=dict)
 
     @property
     def key(self) -> tuple[str, str]:
