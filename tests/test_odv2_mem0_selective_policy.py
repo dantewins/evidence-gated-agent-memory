@@ -215,7 +215,7 @@ def test_selective_policy_compacts_redundant_support_turn_for_current_state() ->
     assert result.debug["support_compacted"] == "1"
 
 
-def test_selective_policy_does_not_intervene_on_unsafe_categories() -> None:
+def test_selective_policy_ignores_category_when_evidence_is_safe() -> None:
     policy = _policy()
     support = make_record(
         entry_id="turn-1",
@@ -260,6 +260,59 @@ def test_selective_policy_does_not_intervene_on_unsafe_categories() -> None:
             session_id="s",
             query_mode=QueryMode.CURRENT_STATE,
             metadata={"benchmark_category": "multi-session"},
+        ),
+        top_k=5,
+    )
+
+    assert [entry.entry_id for entry in result.entries] == ["fact-meta"]
+    assert result.debug["retrieval_mode"] == "odv2_mem0_selective_compact"
+    assert result.debug["support_compacted"] == "1"
+
+
+def test_selective_policy_keeps_support_when_question_needs_raw_context() -> None:
+    policy = _policy()
+    support = make_record(
+        entry_id="turn-1",
+        entity="Alice",
+        attribute="dialogue",
+        value="I started working at Meta after leaving Google.",
+        timestamp=1,
+        session_id="s",
+    )
+    fact = make_record(
+        entry_id="fact-meta",
+        entity="Alice",
+        attribute="employer",
+        value="Meta",
+        timestamp=1,
+        session_id="s",
+        metadata={
+            "source_kind": "structured_fact",
+            "memory_kind": "state",
+            "source_entry_id": "turn-1",
+            "support_text": "I started working at Meta after leaving Google.",
+        },
+    )
+    policy.ingest([support, fact])
+    policy.maybe_consolidate()
+
+    def retrieve_with_support(_, top_k=5):
+        return RetrievalBundle(
+            records=[fact, support][:top_k],
+            debug={"retrieval_mode": "stub_mem0_with_support"},
+        )
+
+    policy.retriever.retrieve_for_query = retrieve_with_support
+    result = policy.retrieve_for_query(
+        make_query(
+            query_id="q-raw",
+            entity="Alice",
+            attribute="employer",
+            question="What did Alice mention about her job?",
+            answer="Meta",
+            timestamp=2,
+            session_id="s",
+            query_mode=QueryMode.CURRENT_STATE,
         ),
         top_k=5,
     )
