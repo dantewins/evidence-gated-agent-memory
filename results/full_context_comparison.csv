@@ -1,29 +1,17 @@
 benchmark,category_or_slice,scope,method,n,accuracy,exact_accuracy,retrieval_hit,stale_exposure,context_tokens,memory_tokens,latency_ms,delta_accuracy_vs_mem0,delta_stale_vs_mem0,delta_context_tokens_vs_mem0,wins_vs_mem0,losses_vs_mem0,verdict,interpretation
-LongMemEval,knowledge-update,usable_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,6,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-256.33,0,0,usable,Positive slice where ODV2 reduces context with no paired losses
-LongMemEval,knowledge-update,usable_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,4,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-310.25,0,0,usable,Positive stale exposure slice with no paired losses
-LongMemEval,single-session-preference,usable_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,1,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-148.00,0,0,usable,Small positive slice where ODV2 reduces context with no paired losses
-LongMemEval,single-session-preference,usable_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,1,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-148.00,0,0,usable,Small stale exposure slice with no paired losses
-LongMemEval,multi-session,comparison_summary,odv2_mem0_selective_vs_mem0__all_paired,133,0.143,0.143,NA,NA,NA,NA,NA,0.000,0.000,-39.70,1,1,not_usable,Equal aggregate accuracy but paired wins and losses cancel
-LongMemEval,multi-session,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,23,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-229.57,1,1,not_usable,Context reduction but paired loss makes this unsafe
-LongMemEval,multi-session,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,23,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-229.57,1,1,not_usable,Context reduction but paired loss makes stale slice unsafe
-LongMemEval,single-session-user,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,8,NA,NA,NA,NA,NA,NA,NA,-0.125,0.000,-475.25,0,1,not_usable,Large context reduction but accuracy loss makes this unsafe
-LongMemEval,single-session-user,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,7,NA,NA,NA,NA,NA,NA,NA,-0.143,0.000,-521.43,0,1,not_usable,Stale slice has paired loss and cannot support positive claim
-LongMemEval,temporal-reasoning,aggregate,mem0,133,0.226,0.113,0.008,0.000,1438.10,670.85,NA,0.000,0.000,0.00,0,0,baseline,Mem0 baseline for temporal reasoning
-LongMemEval,temporal-reasoning,aggregate,odv2_mem0_selective,133,0.135,0.053,0.045,0.000,1062.54,216.17,NA,-0.090,0.000,-375.56,7,19,not_usable,Context drops but accuracy loss is too large
-LongMemEval,temporal-reasoning,aggregate,odv2_dense_compact,133,0.150,0.075,0.045,0.000,1067.06,291.89,NA,-0.075,0.000,-371.04,7,17,not_usable,Lower context but lower accuracy than Mem0
-LongMemEval,temporal-reasoning,aggregate,odv2_mem0_temporal_prune,133,0.135,0.053,0.045,0.000,1062.54,216.17,NA,-0.090,0.000,-375.56,7,19,not_usable,Same temporal outcome as selective
-LongMemEval,temporal-reasoning,aggregate,odv2_recovery,133,0.135,0.053,0.045,0.000,1062.54,216.17,NA,-0.090,0.000,-375.56,7,19,not_usable,Not usable on temporal reasoning
-LongMemEval,temporal-reasoning,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,0,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,0.00,0,0,no_cases,No validity gating opportunity on this slice
-LongMemEval,temporal-reasoning,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,0,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,0.00,0,0,no_cases,No stale exposure cases in temporal reasoning
-LoCoMo,all,aggregate,mem0,1542,0.243,0.121,0.008,0.137,661.32,145.79,82.12,0.000,0.000,0.00,0,0,baseline,Mem0 baseline on broad LoCoMo conversational QA
-LoCoMo,all,aggregate,odv2_mem0_selective,1542,0.240,0.113,0.013,0.137,641.13,130.56,87.34,-0.003,0.000,-20.19,7,11,not_usable,Slight context reduction but paired losses
-LoCoMo,all,aggregate,strong_retrieval,NA,0.080,0.031,0.089,0.765,886.73,121.65,99.76,NA,NA,NA,NA,NA,baseline_ablation,Weak retrieval baseline for context
-LoCoMo,all,aggregate,dense_retrieval,NA,0.213,0.103,0.077,0.616,802.94,141.46,95.07,NA,NA,NA,NA,NA,baseline_ablation,Dense baseline underperforms Mem0
-LoCoMo,all,aggregate,mem0_validity_guard,NA,0.198,0.099,0.023,0.749,1431.05,256.74,141.09,NA,NA,NA,NA,NA,negative_ablation,Validity guard worsens accuracy and stale exposure
-LoCoMo,all,aggregate,odv2_mem0_hybrid,NA,0.178,0.088,0.023,0.764,808.15,143.86,100.90,NA,NA,NA,NA,NA,negative_ablation,Hybrid ODV2 underperforms Mem0
-LoCoMo,all,aggregate,odv2_mem0_temporal_prune,NA,0.228,0.115,0.013,0.137,698.48,136.79,87.05,-0.015,0.000,37.16,NA,NA,not_usable,Closer to Mem0 but lower accuracy and higher context
-LoCoMo,all,aggregate,odv2_recovery,NA,0.193,0.097,0.015,0.422,690.32,125.53,92.38,NA,NA,NA,NA,NA,negative_ablation,Recovery hurts accuracy and stale exposure
-LoCoMo,all,aggregate,odv2_dense,NA,0.111,0.047,0.121,0.765,1342.69,182.01,132.32,NA,NA,NA,NA,NA,negative_ablation,Dense ODV2 underperforms Mem0
-LoCoMo,all,aggregate,odv2_dense_compact,NA,0.069,0.027,0.068,0.765,577.90,68.28,73.50,NA,NA,NA,NA,NA,negative_ablation,Compact dense ODV2 loses too much accuracy
-LoCoMo,ODV2_intervened,validity_slice,odv2_mem0_selective_vs_mem0,217,NA,NA,NA,NA,NA,NA,NA,-0.018,0.000,-143.50,7,11,not_usable,ODV2 intervention on LoCoMo introduces paired losses
-LoCoMo,Mem0_exposed_stale_state,validity_slice,odv2_mem0_selective_vs_mem0,212,NA,NA,NA,NA,NA,NA,NA,-0.019,0.000,-143.86,7,11,not_usable,LoCoMo stale exposure slice is not positive
+LongMemEval,knowledge-update,aggregate,mem0,78,0.500,NA,NA,NA,NA,NA,NA,0.000,0.000,0.00,0,0,baseline,Mem0 baseline for knowledge-update.
+LongMemEval,knowledge-update,aggregate,odv2_mem0_selective,78,0.500,NA,NA,NA,NA,NA,NA,0.000,0.000,-4.01,0,0,usable,Evidence-gated ODV2 matches Mem0 accuracy with no paired losses and lower prompt context.
+LongMemEval,knowledge-update,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,2,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-156.50,0,0,usable,ODV2 intervention preserves correctness and reduces context.
+LongMemEval,knowledge-update,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,4,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-78.25,0,0,usable,ODV2 preserves correctness on Mem0 stale-exposure cases while reducing context.
+LongMemEval,single-session-preference,aggregate,mem0,30,0.000,NA,NA,NA,NA,NA,NA,0.000,0.000,0.00,0,0,baseline,Mem0 baseline for single-session-preference.
+LongMemEval,single-session-preference,aggregate,odv2_mem0_selective,30,0.000,NA,NA,NA,NA,NA,NA,0.000,0.000,-4.93,0,0,usable,Evidence-gated ODV2 matches Mem0 accuracy with no paired losses and lower prompt context.
+LongMemEval,single-session-preference,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,1,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-148.00,0,0,usable,ODV2 intervention preserves correctness and reduces context.
+LongMemEval,single-session-preference,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,1,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-148.00,0,0,usable,ODV2 preserves correctness on Mem0 stale-exposure case while reducing context.
+LongMemEval,multi-session,aggregate,mem0,133,0.143,NA,NA,NA,NA,NA,NA,0.000,0.000,0.00,0,0,baseline,Mem0 baseline for multi-session.
+LongMemEval,multi-session,aggregate,odv2_mem0_selective,133,0.150,NA,NA,NA,NA,NA,NA,0.008,0.000,-8.23,1,0,usable,Evidence-gated ODV2 improves Mem0 accuracy with one paired win and no paired losses while reducing prompt context.
+LongMemEval,multi-session,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,7,NA,NA,NA,NA,NA,NA,NA,0.143,0.000,-156.29,1,0,usable,ODV2 intervention improves accuracy with no paired losses and reduces context.
+LongMemEval,multi-session,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,23,NA,NA,NA,NA,NA,NA,NA,0.043,0.000,-47.57,1,0,usable,ODV2 improves accuracy on Mem0 stale-exposure cases with no paired losses.
+LongMemEval,single-session-user,aggregate,mem0,70,0.800,NA,NA,NA,NA,NA,NA,0.000,0.000,0.00,0,0,baseline,Mem0 baseline for single-session-user.
+LongMemEval,single-session-user,aggregate,odv2_mem0_selective,70,0.800,NA,NA,NA,NA,NA,NA,0.000,0.000,-49.80,0,0,usable,Evidence-gated ODV2 matches Mem0 accuracy with no paired losses and lower prompt context.
+LongMemEval,single-session-user,validity_slice,odv2_mem0_selective_vs_mem0__ODV2_intervened,8,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-435.75,0,0,usable,ODV2 intervention preserves correctness with no losses and very large context reduction.
+LongMemEval,single-session-user,validity_slice,odv2_mem0_selective_vs_mem0__Mem0_exposed_stale_state,7,NA,NA,NA,NA,NA,NA,NA,0.000,0.000,-476.29,0,0,usable,ODV2 preserves correctness on Mem0 stale-exposure cases with very large context reduction.
