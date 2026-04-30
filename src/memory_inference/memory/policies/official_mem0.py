@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 from memory_inference.domain.enums import QueryMode
 from memory_inference.domain.memory import MemoryRecord, RetrievalBundle
@@ -35,6 +35,7 @@ class OfficialMem0Policy(BaseMemoryPolicy):
         self._config = config
         self.episodic_log: list[MemoryRecord] = []
         self._ingested = False
+        self._last_add_debug: dict[str, str] = {}
 
     def ingest(self, updates: Iterable[MemoryRecord]) -> None:
         update_list = list(updates)
@@ -71,45 +72,119 @@ class OfficialMem0Policy(BaseMemoryPolicy):
                 "policy": self.name,
                 "retrieval_mode": "official_mem0_search",
                 "official_mem0_results": str(len(records)),
+                **self._last_add_debug,
             },
         )
 
     def snapshot_size(self) -> int:
         if not self._ingested:
             return 0
-        client = self._ensure_client()
-        get_all = getattr(client, "get_all", None)
-        if get_all is None:
-            return len(self.episodic_log)
-        try:
-            return len(_normalize_mem0_results(get_all(user_id=self.user_id)))
-        except Exception:
-            return len(self.episodic_log)
+        stored_count = self._stored_memory_count()
+        return stored_count if stored_count is not None else len(self.episodic_log)
 
     def _add_messages(self, messages: list[dict[str, str]]) -> None:
         client = self._ensure_client()
+        prepared_messages = _prepare_messages_for_mem0(
+            messages,
+            max_chars=_env_int("MEM0_ADD_MAX_MESSAGE_CHARS", 2000),
+        )
+        if not prepared_messages:
+            return
+
+        batch_size = max(1, _env_int("MEM0_ADD_BATCH_SIZE", 8))
+        batches = list(_batched(prepared_messages, batch_size))
+        infer = _env_bool("MEM0_ADD_INFER", True)
+        raw_fallback = _env_bool("MEM0_RAW_FALLBACK_ON_EMPTY", False)
+        require_nonempty = _env_bool("MEM0_REQUIRE_NONEMPTY", False)
+
+        for batch in batches:
+            self._client_add(client, batch, infer=infer, add_mode="infer" if infer else "raw")
+
+        stored_count = self._stored_memory_count()
+        fallback_used = False
+        add_mode = "infer" if infer else "raw"
+        if infer and raw_fallback and stored_count == 0:
+            for batch in batches:
+                self._client_add(client, batch, infer=False, add_mode="raw_fallback")
+            stored_count = self._stored_memory_count()
+            fallback_used = True
+            add_mode = "infer_then_raw_fallback"
+
+        self._last_add_debug = {
+            "official_mem0_add_mode": add_mode,
+            "official_mem0_add_batches": str(len(batches)),
+            "official_mem0_add_messages": str(len(prepared_messages)),
+            "official_mem0_raw_fallback": "1" if fallback_used else "0",
+            "official_mem0_stored_count": str(stored_count if stored_count is not None else -1),
+        }
+        if require_nonempty and stored_count == 0:
+            raise RuntimeError(
+                "Official Mem0 stored zero memories for a non-empty context. "
+                "This makes the benchmark invalid. Check that the configured Mem0 LLM "
+                "is running and can extract memories, or rerun with "
+                "MEM0_RAW_FALLBACK_ON_EMPTY=true to store raw messages with infer=False."
+            )
+
+    def _client_add(
+        self,
+        client: Any,
+        messages: list[dict[str, str]],
+        *,
+        infer: bool,
+        add_mode: str,
+    ) -> None:
+        metadata = {
+            "source": "validity-aware-memory",
+            "add_mode": add_mode,
+        }
         try:
             client.add(
                 messages,
                 user_id=self.user_id,
-                metadata={"source": "validity-aware-memory"},
+                metadata=metadata,
+                infer=infer,
             )
         except TypeError:
-            client.add(messages, user_id=self.user_id)
+            try:
+                client.add(messages, user_id=self.user_id, metadata=metadata)
+            except TypeError:
+                client.add(messages, user_id=self.user_id)
 
     def _search(self, query: str, *, top_k: int) -> Any:
         client = self._ensure_client()
-        try:
-            return client.search(
-                query,
-                filters={"user_id": self.user_id},
-                limit=top_k,
-            )
-        except (TypeError, ValueError):
+        attempts = (
+            lambda: client.search(query, filters={"user_id": self.user_id}, limit=top_k),
+            lambda: client.search(query, filters={"AND": [{"user_id": self.user_id}]}, limit=top_k),
+            lambda: client.search(query, user_id=self.user_id, limit=top_k),
+            lambda: client.search(query, filters={"user_id": self.user_id}),
+            lambda: client.search(query, user_id=self.user_id),
+        )
+        last_error: Exception | None = None
+        for attempt in attempts:
             try:
-                return client.search(query, user_id=self.user_id, limit=top_k)
-            except TypeError:
-                return client.search(query, user_id=self.user_id)
+                return attempt()
+            except (TypeError, ValueError) as exc:
+                last_error = exc
+        if last_error is not None:
+            raise last_error
+        return []
+
+    def _stored_memory_count(self) -> int | None:
+        client = self._ensure_client()
+        get_all = getattr(client, "get_all", None)
+        if get_all is None:
+            return None
+        attempts = (
+            lambda: get_all(filters={"user_id": self.user_id}),
+            lambda: get_all(filters={"AND": [{"user_id": self.user_id}]}),
+            lambda: get_all(user_id=self.user_id),
+        )
+        for attempt in attempts:
+            try:
+                return len(_normalize_mem0_results(attempt()))
+            except (TypeError, ValueError):
+                continue
+        return None
 
     def _ensure_client(self) -> Any:
         if self.client is None:
@@ -354,6 +429,45 @@ def _records_to_messages(records: list[MemoryRecord]) -> list[dict[str, str]]:
     return messages
 
 
+def _prepare_messages_for_mem0(
+    messages: list[dict[str, str]],
+    *,
+    max_chars: int,
+) -> list[dict[str, str]]:
+    if max_chars <= 0:
+        return messages
+    prepared: list[dict[str, str]] = []
+    for message in messages:
+        content = str(message.get("content", "")).strip()
+        if not content:
+            continue
+        role = str(message.get("role", "user") or "user")
+        for chunk in _split_text(content, max_chars=max_chars):
+            prepared.append({"role": role, "content": chunk})
+    return prepared
+
+
+def _split_text(text: str, *, max_chars: int) -> list[str]:
+    if len(text) <= max_chars:
+        return [text]
+    chunks: list[str] = []
+    remaining = text
+    while len(remaining) > max_chars:
+        split_at = remaining.rfind(" ", 0, max_chars)
+        if split_at < max_chars // 2:
+            split_at = max_chars
+        chunks.append(remaining[:split_at].strip())
+        remaining = remaining[split_at:].strip()
+    if remaining:
+        chunks.append(remaining)
+    return chunks
+
+
+def _batched(items: list[dict[str, str]], batch_size: int) -> Iterator[list[dict[str, str]]]:
+    for start in range(0, len(items), batch_size):
+        yield items[start:start + batch_size]
+
+
 def _speaker_to_role(speaker: str) -> str:
     normalized = speaker.strip().lower()
     if normalized in {"assistant", "agent", "bot"}:
@@ -366,13 +480,23 @@ def _normalize_mem0_results(raw_results: Any) -> list[Any]:
         return []
     if isinstance(raw_results, dict):
         for key in ("results", "memories", "data"):
-            value = raw_results.get(key)
-            if isinstance(value, list):
-                return value
-        return [raw_results]
+            if key not in raw_results:
+                continue
+            return _normalize_mem0_results(raw_results.get(key))
+        return [raw_results] if _looks_like_mem0_memory(raw_results) else []
     if isinstance(raw_results, list):
-        return raw_results
-    return [raw_results]
+        normalized: list[Any] = []
+        for item in raw_results:
+            normalized.extend(_normalize_mem0_results(item))
+        return normalized
+    return [raw_results] if str(raw_results).strip() else []
+
+
+def _looks_like_mem0_memory(result: dict[str, Any]) -> bool:
+    return any(
+        str(result.get(key) or "").strip()
+        for key in ("memory", "text", "value", "content")
+    )
 
 
 def _result_to_record(result: Any, *, query: RuntimeQuery, index: int) -> MemoryRecord:
@@ -484,3 +608,20 @@ def _normalize(value: str) -> str:
 def _safe_collection_name(value: str) -> str:
     safe = re.sub(r"[^a-zA-Z0-9_-]+", "_", value).strip("_")
     return safe or "official_mem0"
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        return int(raw_value)
+    except ValueError:
+        return default

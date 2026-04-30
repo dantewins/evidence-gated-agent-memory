@@ -86,7 +86,14 @@ MEM0_EMBEDDER_PROVIDER=huggingface
 MEM0_EMBEDDER_MODEL=sentence-transformers/all-MiniLM-L6-v2
 MEM0_EMBEDDING_DIMS=384
 MEM0_VECTOR_STORE_PROVIDER=qdrant
+MEM0_ADD_INFER=true
+MEM0_ADD_BATCH_SIZE=8
+MEM0_ADD_MAX_MESSAGE_CHARS=2000
+MEM0_RAW_FALLBACK_ON_EMPTY=true
+MEM0_REQUIRE_NONEMPTY=true
 ```
+
+The official Mem0 runner starts with a smoke test. If Mem0 stores no searchable memory, the run fails instead of producing an all-zero report. The raw fallback uses Mem0's documented `infer=False` path only when local extraction returns zero memories for a non-empty context.
 
 If using vLLM instead of Ollama:
 

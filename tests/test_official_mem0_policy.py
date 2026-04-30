@@ -3,6 +3,7 @@ from memory_inference.llm.mock_consolidator import MockConsolidator
 from memory_inference.memory.policies.official_mem0 import (
     OfficialMem0ODV2SelectivePolicy,
     OfficialMem0Policy,
+    _normalize_mem0_results,
     official_mem0_local_config_from_env,
 )
 from tests.factories import make_query, make_record
@@ -181,3 +182,43 @@ def test_official_mem0_odv2_gate_keeps_mem0_output_when_current_is_absent() -> N
     assert [entry.value for entry in result.entries] == ["Alice used to work at Google."]
     assert result.debug["retrieval_mode"] == "official_mem0_odv2_passthrough"
     assert result.debug["validity_removed"] == "0"
+
+class EmptyInferMem0Client:
+    def __init__(self):
+        self.add_calls = []
+        self.memories = []
+
+    def add(self, messages, user_id, metadata=None, infer=True):
+        self.add_calls.append({"messages": messages, "user_id": user_id, "metadata": metadata or {}, "infer": infer})
+        if infer:
+            return
+        for message in messages:
+            self.memories.append({"id": f"raw-{len(self.memories)}", "memory": message["content"]})
+
+    def search(self, query, user_id=None, filters=None, limit=None):
+        return {"results": self.memories[:limit]}
+
+    def get_all(self, user_id=None, filters=None):
+        return {"results": self.memories}
+
+
+def test_official_mem0_policy_raw_fallback_when_infer_stores_nothing(monkeypatch) -> None:
+    monkeypatch.setenv("MEM0_RAW_FALLBACK_ON_EMPTY", "true")
+    monkeypatch.setenv("MEM0_REQUIRE_NONEMPTY", "true")
+    client = EmptyInferMem0Client()
+    policy = OfficialMem0Policy(client=client, user_id="u")
+
+    policy.ingest([make_record(entry_id="turn-1", attribute="dialogue", value="My codename is Redwood.")])
+    result = policy.retrieve_for_query(make_query(question="What is my codename?"))
+
+    assert [call["infer"] for call in client.add_calls] == [True, False]
+    assert result.debug["official_mem0_add_mode"] == "infer_then_raw_fallback"
+    assert result.debug["official_mem0_raw_fallback"] == "1"
+    assert result.debug["official_mem0_stored_count"] == "1"
+    assert result.entries[0].value == "My codename is Redwood."
+
+
+def test_normalize_mem0_results_does_not_turn_empty_wrappers_into_memories() -> None:
+    assert _normalize_mem0_results({"results": {"memories": []}, "relations": []}) == []
+    assert _normalize_mem0_results({"results": [{"memory": "Alice likes tea"}]}) == [{"memory": "Alice likes tea"}]
+
