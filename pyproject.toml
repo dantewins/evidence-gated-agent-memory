@@ -15,6 +15,11 @@ local-hf = [
     "torch>=2.2",
     "transformers>=4.40",
 ]
+official-mem0 = [
+    "mem0ai>=0.1",
+    "ollama>=0.4",
+    "qdrant-client>=1.9",
+]
 
 [project.scripts]
 memory-inference = "memory_inference.cli:main"

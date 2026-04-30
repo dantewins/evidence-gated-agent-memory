@@ -3,6 +3,10 @@ from __future__ import annotations
 from memory_inference.llm.consolidator_base import BaseConsolidator
 from memory_inference.memory.retrieval.semantic import DenseEncoder
 from memory_inference.memory.policies.mem0 import Mem0Policy
+from memory_inference.memory.policies.official_mem0 import (
+    OfficialMem0ODV2SelectivePolicy,
+    OfficialMem0Policy,
+)
 from memory_inference.memory.policies.odv2_mem0_selective import ODV2Mem0SelectivePolicy
 from memory_inference.memory.policies.odv2_mem0_temporal_prune import ODV2Mem0TemporalPrunePolicy
 from memory_inference.memory.policies.odv2 import ODV2Policy
@@ -81,6 +85,22 @@ def mem0_all_features_policy(
     )
 
 
+def official_mem0_policy() -> OfficialMem0Policy:
+    return OfficialMem0Policy(name="official_mem0")
+
+
+def official_mem0_odv2_selective_policy(
+    *,
+    consolidator: BaseConsolidator,
+    importance_threshold: float = 0.1,
+) -> OfficialMem0ODV2SelectivePolicy:
+    return OfficialMem0ODV2SelectivePolicy(
+        name="official_mem0_odv2_selective",
+        consolidator=consolidator,
+        importance_threshold=importance_threshold,
+    )
+
+
 def mem0_validity_guard_policy(
     *,
     consolidator,
@@ -141,6 +161,11 @@ def odv2_mem0_selective_policy(
     encoder: DenseEncoder | None = None,
     write_top_k: int = 10,
     importance_threshold: float = 0.1,
+    enable_support_compaction: bool = True,
+    enable_stale_guard: bool = True,
+    require_base_current: bool = True,
+    require_revision_evidence: bool = True,
+    respect_raw_context_cues: bool = True,
 ) -> ODV2Mem0SelectivePolicy:
     return ODV2Mem0SelectivePolicy(
         name="odv2_mem0_selective",
@@ -148,6 +173,68 @@ def odv2_mem0_selective_policy(
         encoder=encoder,
         write_top_k=write_top_k,
         importance_threshold=importance_threshold,
+        enable_support_compaction=enable_support_compaction,
+        enable_stale_guard=enable_stale_guard,
+        require_base_current=require_base_current,
+        require_revision_evidence=require_revision_evidence,
+        respect_raw_context_cues=respect_raw_context_cues,
+    )
+
+
+def odv2_support_compact_policy(
+    *,
+    consolidator: BaseConsolidator,
+    encoder: DenseEncoder | None = None,
+    write_top_k: int = 10,
+    importance_threshold: float = 0.1,
+) -> ODV2Mem0SelectivePolicy:
+    return ODV2Mem0SelectivePolicy(
+        name="odv2_support_compact",
+        consolidator=consolidator,
+        encoder=encoder,
+        write_top_k=write_top_k,
+        importance_threshold=importance_threshold,
+        enable_support_compaction=True,
+        enable_stale_guard=False,
+    )
+
+
+def odv2_stale_guard_policy(
+    *,
+    consolidator: BaseConsolidator,
+    encoder: DenseEncoder | None = None,
+    write_top_k: int = 10,
+    importance_threshold: float = 0.1,
+) -> ODV2Mem0SelectivePolicy:
+    return ODV2Mem0SelectivePolicy(
+        name="odv2_stale_guard",
+        consolidator=consolidator,
+        encoder=encoder,
+        write_top_k=write_top_k,
+        importance_threshold=importance_threshold,
+        enable_support_compaction=False,
+        enable_stale_guard=True,
+    )
+
+
+def odv2_mem0_aggressive_policy(
+    *,
+    consolidator: BaseConsolidator,
+    encoder: DenseEncoder | None = None,
+    write_top_k: int = 10,
+    importance_threshold: float = 0.1,
+) -> ODV2Mem0SelectivePolicy:
+    return ODV2Mem0SelectivePolicy(
+        name="odv2_mem0_aggressive",
+        consolidator=consolidator,
+        encoder=encoder,
+        write_top_k=write_top_k,
+        importance_threshold=importance_threshold,
+        enable_support_compaction=True,
+        enable_stale_guard=True,
+        require_base_current=False,
+        require_revision_evidence=False,
+        respect_raw_context_cues=False,
     )
 
 

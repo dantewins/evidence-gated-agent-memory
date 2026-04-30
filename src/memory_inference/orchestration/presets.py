@@ -10,13 +10,18 @@ from memory_inference.memory.policies import (
     mem0_history_aware_policy,
     mem0_policy,
     mem0_validity_guard_policy,
+    official_mem0_odv2_selective_policy,
+    official_mem0_policy,
+    odv2_mem0_aggressive_policy,
     odv2_mem0_hybrid_policy,
     odv2_mem0_selective_policy,
     odv2_mem0_temporal_prune_policy,
     odv2_recovery_policy,
+    odv2_stale_guard_policy,
     odv2_dense_compact_policy,
     odv2_dense_policy,
     odv2_strong_policy,
+    odv2_support_compact_policy,
     offline_delta_v2_policy,
     ExactMatchMemoryPolicy,
     RecencySalienceMemoryPolicy,
@@ -81,8 +86,13 @@ def policy_factory_by_name(name: str) -> PolicyFactory:
         "mem0_history_aware": mem0_history_aware_policy,
         "mem0_all_features": mem0_all_features_policy,
         "mem0_validity_guard": _mem0_validity_guard_factory,
+        "official_mem0": official_mem0_policy,
+        "official_mem0_odv2_selective": _official_mem0_odv2_selective_factory,
+        "odv2_mem0_aggressive": _odv2_mem0_aggressive_factory,
         "odv2_mem0_hybrid": _odv2_mem0_hybrid_factory,
         "odv2_mem0_selective": _odv2_mem0_selective_factory,
+        "odv2_support_compact": _odv2_support_compact_factory,
+        "odv2_stale_guard": _odv2_stale_guard_factory,
         "odv2_mem0_temporal_prune": _odv2_mem0_temporal_prune_factory,
         "odv2_recovery": _odv2_recovery_factory,
         "offline_delta_v2": _offline_delta_factory,
@@ -103,12 +113,28 @@ def _mem0_validity_guard_factory():
     return mem0_validity_guard_policy(consolidator=BenchmarkHeuristicConsolidator())
 
 
+def _official_mem0_odv2_selective_factory():
+    return official_mem0_odv2_selective_policy(consolidator=BenchmarkHeuristicConsolidator())
+
+
+def _odv2_mem0_aggressive_factory():
+    return odv2_mem0_aggressive_policy(consolidator=BenchmarkHeuristicConsolidator())
+
+
 def _odv2_mem0_hybrid_factory():
     return odv2_mem0_hybrid_policy(consolidator=BenchmarkHeuristicConsolidator())
 
 
 def _odv2_mem0_selective_factory():
     return odv2_mem0_selective_policy(consolidator=BenchmarkHeuristicConsolidator())
+
+
+def _odv2_support_compact_factory():
+    return odv2_support_compact_policy(consolidator=BenchmarkHeuristicConsolidator())
+
+
+def _odv2_stale_guard_factory():
+    return odv2_stale_guard_policy(consolidator=BenchmarkHeuristicConsolidator())
 
 
 def _odv2_mem0_temporal_prune_factory():

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import os
 import sys
 import types
 from pathlib import Path
@@ -49,7 +51,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         dataset=dataset,
         reasoner=reasoner,
         policy_factories=policy_factories,
-        manifest_config=manifest_config(args),
+        manifest_config=manifest_config(args, argv),
         manifest_output=args.output,
         cases_output=args.cases_output,
     )
@@ -214,14 +216,16 @@ def select_policy_factories(policy_names: Sequence[str]):
     return policy_factories_for_names(list(policy_names))
 
 
-def manifest_config(args: argparse.Namespace) -> dict[str, object]:
+def manifest_config(args: argparse.Namespace, argv: Sequence[str] | None = None) -> dict[str, object]:
     return {
+        "command_line": " ".join(sys.argv if argv is None else ["memory-inference", *argv]),
         "reasoner": args.reasoner,
         "model_id": args.model_id,
         "policy": list(args.policy),
         "category": list(getattr(args, "category", [])),
         "query_mode": list(getattr(args, "query_mode", [])),
         "input": args.input,
+        "input_sha256": _sha256_file(args.input),
         "input_format": getattr(args, "input_format", "raw"),
         "cache_dir": getattr(args, "cache_dir", ""),
         "cases_output": getattr(args, "cases_output", ""),
@@ -235,7 +239,25 @@ def manifest_config(args: argparse.Namespace) -> dict[str, object]:
         "prompt_template_id": getattr(args, "prompt_template_id", None),
         "trust_remote_code": getattr(args, "trust_remote_code", None),
         "use_chat_template": not getattr(args, "no_chat_template", False),
+        "official_mem0": {
+            "llm_provider": os.getenv("MEM0_LLM_PROVIDER", ""),
+            "llm_model": os.getenv("MEM0_LLM_MODEL", ""),
+            "embedder_provider": os.getenv("MEM0_EMBEDDER_PROVIDER", ""),
+            "embedder_model": os.getenv("MEM0_EMBEDDER_MODEL", ""),
+            "vector_store_provider": os.getenv("MEM0_VECTOR_STORE_PROVIDER", ""),
+        },
     }
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    try:
+        with Path(path).open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return ""
+    return digest.hexdigest()
 
 
 def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:

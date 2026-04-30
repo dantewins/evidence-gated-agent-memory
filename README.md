@@ -100,27 +100,93 @@ Those runs are evaluated with downstream task metrics such as QA accuracy, conte
 
 ## Final reporting path
 
-The current boss-facing comparison is intentionally narrow:
+The current reviewer-facing comparison is intentionally narrow:
 
 - baseline: `mem0`
 - target: `odv2_mem0_selective`
-- primary slice: LongMemEval `knowledge-update`
+- primary benchmark: selected LongMemEval current-state categories
+- diagnostic slices: ODV2 intervention cases, gold-mismatched same-key exposure, and same-key conflicts
 
-Run and compile the result:
+Run the stronger results package with Mem0, ODV2 ablations, full ODV2-selective,
+and an aggressive negative-control variant:
+
+```bash
+bash scripts/run_stronger_results_package.sh
+```
+
+This writes:
+
+- `results/stronger_results_summary.csv`
+- `results/stronger_results_audit.jsonl`
+- `results/longmemeval_input.sha256` when the input file is available
+
+The summary CSV reports all paired cases plus predeclared diagnostic slices:
+
+- `Predeclared validity-sensitive union`
+- `Current-state same-key evidence retrieved`
+- `Gold-mismatched same-key state exposed`
+- `Same-key state conflict exposed`
+- `ODV2 intervened`
+
+To run only one slice with the default Mem0 vs ODV2-selective comparison:
+
 
 ```bash
 bash scripts/run_longmemeval_slice.sh knowledge-update
 ```
 
+To run one slice with ablations:
+
+```bash
+POLICIES="mem0 odv2_support_compact odv2_stale_guard odv2_mem0_selective odv2_mem0_aggressive" \
+  bash scripts/run_longmemeval_slice.sh multi-session
+```
+
+To run the official Mem0 comparison with a local Llama-backed Mem0 OSS stack:
+
+```bash
+pip install ".[official-mem0]"
+ollama pull llama3.1:8b
+ollama pull nomic-embed-text:latest
+bash scripts/run_official_mem0_package.sh
+```
+
+The official Mem0 path defaults to local providers:
+
+- `MEM0_LLM_PROVIDER=ollama`
+- `MEM0_LLM_MODEL=llama3.1:8b`
+- `MEM0_EMBEDDER_PROVIDER=ollama`
+- `MEM0_EMBEDDER_MODEL=nomic-embed-text:latest`
+- `MEM0_VECTOR_STORE_PROVIDER=qdrant`
+
+The Llama setting controls Mem0's memory-extraction LLM. The embedder remains a
+separate embedding model because Mem0 still needs vector representations for
+search; this is an implementation detail for a valid official-Mem0 comparison,
+not a separate research claim.
+
+For a vLLM-served local Llama model, start vLLM separately and run:
+
+```bash
+MEM0_LLM_PROVIDER=vllm \
+MEM0_LLM_MODEL=meta-llama/Llama-3.1-8B-Instruct \
+VLLM_BASE_URL=http://localhost:8000/v1 \
+bash scripts/run_official_mem0_package.sh
+```
+
 Compile an existing result without rerunning the benchmark:
 
 ```bash
-python scripts/compile_boss_results.py results/longmemeval_knowledge-update_cases.jsonl
+python scripts/compile_stronger_results.py \
+  --audit-output results/stronger_results_audit.jsonl \
+  results/longmemeval_knowledge-update_cases.jsonl \
+  results/longmemeval_multi-session_cases.jsonl \
+  > results/stronger_results_summary.csv
 ```
 
 The report is designed to answer one question clearly: does ODV2 preserve Mem0
-accuracy while improving a secondary metric such as prompt context or stale
-state exposure?
+accuracy while improving prompt context, and which ODV2 component causes the
+effect? The gold-mismatch columns are offline diagnostics, not a claim that the
+runtime system has access to gold labels.
 
 ## Repository implementation
 

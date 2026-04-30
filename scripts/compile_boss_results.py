@@ -45,9 +45,9 @@ def write_csv_report(paths: list[Path]) -> None:
         "mem0_accuracy",
         "odv2_accuracy",
         "delta_accuracy",
-        "mem0_stale_exposure",
-        "odv2_stale_exposure",
-        "delta_stale_exposure",
+        "mem0_gold_mismatch_exposure",
+        "odv2_gold_mismatch_exposure",
+        "delta_gold_mismatch_exposure",
         "mem0_prompt_tokens",
         "odv2_prompt_tokens",
         "delta_prompt_tokens",
@@ -63,7 +63,7 @@ def write_csv_report(paths: list[Path]) -> None:
         for key, slice_name in (
             ("all_paired", "all paired cases"),
             ("validity_intervened", "ODV2 intervened"),
-            ("baseline_stale_exposure", "Mem0 exposed stale state"),
+            ("baseline_stale_exposure", "Gold-mismatched same-key state exposed"),
             ("baseline_same_key_conflict", "Mem0 same-key conflict"),
         ):
             writer.writerow(_csv_row(str(report["label"]), slice_name, report[key]))
@@ -83,7 +83,7 @@ def render_report(paths: list[Path]) -> str:
             "",
             "## Main Comparison",
             "",
-            "| result | n | mem0 acc | odv2 acc | delta acc | delta stale | delta ctx | wins | losses | verdict |",
+            "| result | n | mem0 acc | odv2 acc | delta acc | delta gold-mismatch | delta ctx | wins | losses | verdict |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
         ]
     )
@@ -104,7 +104,7 @@ def render_report(paths: list[Path]) -> str:
             "",
             "- Do not claim ODV2 beats Mem0 on broad benchmark accuracy unless delta acc is positive.",
             "- Do not use the negative ablation variants as the headline result.",
-            "- Do not claim stale-state reduction unless delta stale is below 0.000 on the relevant slice.",
+            "- Do not claim stale-state reduction; this report uses gold-mismatched same-key exposure as an offline diagnostic.",
         ]
     )
     return "\n".join(lines)
@@ -246,7 +246,7 @@ def _executive_summary(reports: list[dict[str, object]]) -> list[str]:
         ]
     return [
         "- Status: no usable positive result yet.",
-        "- Requirement for a defensible claim: delta acc >= 0.000, losses = 0, and delta ctx < 0 or delta stale < 0.",
+        "- Requirement for a defensible claim: delta acc >= 0.000, losses = 0, and delta ctx < 0 or delta gold-mismatch < 0.",
     ]
 
 
@@ -254,12 +254,12 @@ def _slice_section(report: dict[str, object]) -> list[str]:
     lines = [
         f"### {report['label']}",
         "",
-        "| slice | n | delta acc | delta stale | delta ctx | wins | losses | verdict |",
+        "| slice | n | delta acc | delta gold-mismatch | delta ctx | wins | losses | verdict |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for key, label in (
         ("validity_intervened", "ODV2 intervened"),
-        ("baseline_stale_exposure", "Mem0 exposed stale state"),
+        ("baseline_stale_exposure", "Gold-mismatched same-key state exposed"),
         ("baseline_same_key_conflict", "Mem0 same-key conflict"),
     ):
         lines.append(_slice_row(label, report[key]))
@@ -301,9 +301,9 @@ def _csv_row(result_label: str, slice_name: str, summary: dict[str, object]) -> 
         "mem0_accuracy": f"{float(summary['baseline_acc']):.3f}",
         "odv2_accuracy": f"{float(summary['target_acc']):.3f}",
         "delta_accuracy": f"{float(summary['delta_acc']):.3f}",
-        "mem0_stale_exposure": f"{float(summary['baseline_stale']):.3f}",
-        "odv2_stale_exposure": f"{float(summary['target_stale']):.3f}",
-        "delta_stale_exposure": f"{float(summary['delta_stale']):.3f}",
+        "mem0_gold_mismatch_exposure": f"{float(summary['baseline_stale']):.3f}",
+        "odv2_gold_mismatch_exposure": f"{float(summary['target_stale']):.3f}",
+        "delta_gold_mismatch_exposure": f"{float(summary['delta_stale']):.3f}",
         "mem0_prompt_tokens": f"{float(summary['baseline_ctx']):.2f}",
         "odv2_prompt_tokens": f"{float(summary['target_ctx']):.2f}",
         "delta_prompt_tokens": f"{float(summary['delta_ctx']):.2f}",
@@ -317,7 +317,7 @@ def _csv_row(result_label: str, slice_name: str, summary: dict[str, object]) -> 
 
 def _claim_for_summary(summary: dict[str, object]) -> str:
     if _is_usable(summary):
-        return "Preserves Mem0 accuracy with no paired losses while reducing prompt context or stale exposure."
+        return "Preserves Mem0 accuracy with no paired losses while reducing prompt context or gold-mismatch exposure."
     if int(summary["n"]) == 0:
         return "No cases in this slice."
     if int(summary["losses"]) > 0 or float(summary["delta_acc"]) < 0.0:

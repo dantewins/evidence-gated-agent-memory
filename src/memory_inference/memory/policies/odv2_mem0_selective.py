@@ -65,9 +65,19 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
         write_top_k: int = 10,
         importance_threshold: float = 0.1,
         max_validity_appends: int = 0,
+        enable_support_compaction: bool = True,
+        enable_stale_guard: bool = True,
+        require_base_current: bool = True,
+        require_revision_evidence: bool = True,
+        respect_raw_context_cues: bool = True,
     ) -> None:
         super().__init__(name=name)
         self.max_validity_appends = max_validity_appends
+        self.enable_support_compaction = enable_support_compaction
+        self.enable_stale_guard = enable_stale_guard
+        self.require_base_current = require_base_current
+        self.require_revision_evidence = require_revision_evidence
+        self.respect_raw_context_cues = respect_raw_context_cues
         self.retriever = Mem0Policy(
             name=f"{name}::mem0",
             encoder=encoder,
@@ -132,7 +142,7 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
             return self._bundle(base_records, base=base, retrieval_mode="odv2_mem0_selective_passthrough")
 
         support_compacted = 0
-        if self._query_allows_evidence_compaction(query):
+        if self.enable_support_compaction and self._query_allows_evidence_compaction(query):
             base_records, support_compacted = self._compact_redundant_support(base_records, query)
 
         current_entries = self.validity.current_entries_for_query(query)
@@ -162,7 +172,11 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
                 ),
                 support_compacted=support_compacted,
             )
-        if not self._base_contains_current_same_key(base_records, query, decisive_current):
+        if self.require_base_current and not self._base_contains_current_same_key(
+            base_records,
+            query,
+            decisive_current,
+        ):
             return self._bundle(
                 base_records,
                 base=base,
@@ -173,7 +187,7 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
                 ),
                 support_compacted=support_compacted,
             )
-        if not self._query_allows_stale_guard(query):
+        if not self.enable_stale_guard or not self._query_allows_stale_guard(query):
             return self._bundle(
                 base_records,
                 base=base,
@@ -184,7 +198,7 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
                 ),
                 support_compacted=support_compacted,
             )
-        if not self._has_evidence_backed_revision(
+        if self.require_revision_evidence and not self._has_evidence_backed_revision(
             query,
             records=base_records,
             current_entries=decisive_current,
@@ -353,8 +367,7 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
             compacted.append(record)
         return compacted, removed
 
-    @staticmethod
-    def _query_allows_evidence_compaction(query: RuntimeQuery) -> bool:
+    def _query_allows_evidence_compaction(self, query: RuntimeQuery) -> bool:
         if query.query_mode not in {QueryMode.CURRENT_STATE, QueryMode.STATE_WITH_PROVENANCE}:
             return False
         if query.multi_attributes:
@@ -363,10 +376,12 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
             return False
         if query.attribute in {"dialogue", "event"}:
             return False
-        return not ODV2Mem0SelectivePolicy._question_requires_raw_context(query.question)
+        return (
+            not self.respect_raw_context_cues
+            or not ODV2Mem0SelectivePolicy._question_requires_raw_context(query.question)
+        )
 
-    @staticmethod
-    def _query_allows_stale_guard(query: RuntimeQuery) -> bool:
+    def _query_allows_stale_guard(self, query: RuntimeQuery) -> bool:
         if query.query_mode != QueryMode.CURRENT_STATE:
             return False
         if query.multi_attributes:
@@ -375,7 +390,10 @@ class ODV2Mem0SelectivePolicy(BaseMemoryPolicy):
             return False
         if query.attribute in {"dialogue", "event"}:
             return False
-        return not ODV2Mem0SelectivePolicy._question_requires_raw_context(query.question)
+        return (
+            not self.respect_raw_context_cues
+            or not ODV2Mem0SelectivePolicy._question_requires_raw_context(query.question)
+        )
 
     @staticmethod
     def _question_requires_raw_context(question: str) -> bool:

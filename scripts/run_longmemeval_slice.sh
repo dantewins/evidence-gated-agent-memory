@@ -8,6 +8,7 @@ export TOKENIZERS_PARALLELISM="${TOKENIZERS_PARALLELISM:-false}"
 
 SLICE_NAME="${1:-knowledge-update}"
 SAFE_SLICE_NAME="${SLICE_NAME//[^a-zA-Z0-9_-]/_}"
+RESULT_PREFIX="${RESULT_PREFIX:-longmemeval}"
 
 PYTHON_BIN="${PYTHON_BIN:-}"
 if [[ -z "${PYTHON_BIN}" ]]; then
@@ -25,6 +26,13 @@ DEVICE="${DEVICE:-cuda}"
 DTYPE="${DTYPE:-bfloat16}"
 INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-12}"
 LONGMEMEVAL_INPUT="${LONGMEMEVAL_INPUT:-data/longmemeval_s_cleaned.json}"
+POLICIES="${POLICIES:-mem0 odv2_mem0_selective}"
+COMPILE_SLICE_REPORT="${COMPILE_SLICE_REPORT:-1}"
+
+POLICY_ARGS=()
+for POLICY in ${POLICIES}; do
+  POLICY_ARGS+=(--policy "${POLICY}")
+done
 
 "${PYTHON_BIN}" -m memory_inference.cli longmemeval \
   --input "${LONGMEMEVAL_INPUT}" \
@@ -34,11 +42,12 @@ LONGMEMEVAL_INPUT="${LONGMEMEVAL_INPUT:-data/longmemeval_s_cleaned.json}"
   --device "${DEVICE}" \
   --dtype "${DTYPE}" \
   --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
-  --policy mem0 \
-  --policy odv2_mem0_selective \
+  "${POLICY_ARGS[@]}" \
   --category "${SLICE_NAME}" \
-  --cache-dir ".cache/memory_inference_longmemeval_${SAFE_SLICE_NAME}" \
-  --output "results/longmemeval_${SAFE_SLICE_NAME}.json" \
-  --cases-output "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl"
+  --cache-dir ".cache/memory_inference_${RESULT_PREFIX}_${SAFE_SLICE_NAME}" \
+  --output "results/${RESULT_PREFIX}_${SAFE_SLICE_NAME}.json" \
+  --cases-output "results/${RESULT_PREFIX}_${SAFE_SLICE_NAME}_cases.jsonl"
 
-"${PYTHON_BIN}" scripts/compile_boss_results.py "results/longmemeval_${SAFE_SLICE_NAME}_cases.jsonl"
+if [[ "${COMPILE_SLICE_REPORT}" == "1" ]]; then
+  "${PYTHON_BIN}" scripts/compile_boss_results.py "results/${RESULT_PREFIX}_${SAFE_SLICE_NAME}_cases.jsonl"
+fi

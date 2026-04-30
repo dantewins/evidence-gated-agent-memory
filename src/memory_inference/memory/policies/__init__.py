@@ -13,6 +13,10 @@ from memory_inference.memory.policies.baselines import (
 )
 from memory_inference.memory.policies.dense import DenseRetrievalMemoryPolicy
 from memory_inference.memory.policies.mem0 import Mem0Policy
+from memory_inference.memory.policies.official_mem0 import (
+    OfficialMem0ODV2SelectivePolicy,
+    OfficialMem0Policy,
+)
 from memory_inference.memory.policies.odv2 import ODV2Policy
 from memory_inference.memory.policies.odv2_mem0_hybrid import ODV2Mem0HybridPolicy
 from memory_inference.memory.policies.odv2_mem0_selective import ODV2Mem0SelectivePolicy
@@ -27,13 +31,18 @@ from memory_inference.memory.policies.presets import (
     mem0_history_aware_policy,
     mem0_policy,
     mem0_validity_guard_policy,
+    official_mem0_odv2_selective_policy,
+    official_mem0_policy,
+    odv2_mem0_aggressive_policy,
     odv2_mem0_hybrid_policy,
     odv2_mem0_selective_policy,
     odv2_mem0_temporal_prune_policy,
     odv2_recovery_policy,
+    odv2_stale_guard_policy,
     odv2_dense_compact_policy,
     odv2_dense_policy,
     odv2_strong_policy,
+    odv2_support_compact_policy,
     offline_delta_v2_policy,
 )
 
@@ -46,6 +55,8 @@ __all__ = [
     "Mem0Policy",
     "Mem0ValidityGuardPolicy",
     "ODV2Policy",
+    "OfficialMem0ODV2SelectivePolicy",
+    "OfficialMem0Policy",
     "ODV2Mem0HybridPolicy",
     "ODV2Mem0SelectivePolicy",
     "ODV2Mem0TemporalPrunePolicy",
@@ -64,12 +75,17 @@ __all__ = [
     "mem0_history_aware_policy",
     "mem0_policy",
     "mem0_validity_guard_policy",
+    "official_mem0_odv2_selective_policy",
+    "official_mem0_policy",
+    "odv2_mem0_aggressive_policy",
     "odv2_mem0_hybrid_policy",
     "odv2_mem0_selective_policy",
     "odv2_mem0_temporal_prune_policy",
     "odv2_recovery_policy",
+    "odv2_stale_guard_policy",
     "odv2_dense_compact_policy",
     "odv2_dense_policy",
     "odv2_strong_policy",
+    "odv2_support_compact_policy",
     "offline_delta_v2_policy",
 ]

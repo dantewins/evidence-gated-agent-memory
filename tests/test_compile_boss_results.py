@@ -70,6 +70,7 @@ def test_compile_boss_results_exports_csv(tmp_path) -> None:
     csv_output = buffer.getvalue()
 
     assert "result,slice,n,mem0_accuracy,odv2_accuracy,delta_accuracy" in csv_output
+    assert "delta_gold_mismatch_exposure" in csv_output
     assert "longmemeval:knowledge-update,all paired cases,1,1.000,1.000,0.000" in csv_output
     assert "longmemeval:knowledge-update,ODV2 intervened,1,1.000,1.000,0.000" in csv_output
 
