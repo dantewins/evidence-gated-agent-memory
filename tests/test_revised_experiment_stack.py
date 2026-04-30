@@ -1,10 +1,15 @@
+import json
+
 from memory_inference.memory.policies import AppendOnlyMemoryPolicy
 from memory_inference.memory.policies import ExactMatchMemoryPolicy
 from memory_inference.memory.policies import StrongRetrievalMemoryPolicy
-from memory_inference.datasets.normalized_io import NormalizedRecord
+from memory_inference.datasets.normalized_io import NormalizedDataset, NormalizedRecord
 from memory_inference.domain.benchmark import ExperimentCase, ExperimentContext
 from memory_inference.llm.deterministic_reader import DeterministicValidityReader
-from memory_inference.orchestration.experiment import evaluate_structured_policy_full
+from memory_inference.orchestration.experiment import (
+    evaluate_structured_policy_full,
+    run_dataset_experiment,
+)
 from memory_inference.evaluation.targets import EvalTarget
 from tests.factories import make_query, make_record
 
@@ -208,6 +213,134 @@ def test_structured_evaluation_does_not_double_ingest_repeated_full_context_batc
     assert len(result.evaluated_cases) == 2
     assert len(result.evaluated_cases[0].retrieval_bundle.records) == len(updates)
     assert len(result.evaluated_cases[1].retrieval_bundle.records) == len(updates)
+
+
+def test_structured_evaluation_batches_reader_across_contexts_and_reports_progress() -> None:
+    class BatchTrackingReasoner(DeterministicValidityReader):
+        def __init__(self) -> None:
+            super().__init__()
+            self.batch_sizes: list[int] = []
+
+        def answer_many_with_traces(self, queries, contexts):
+            self.batch_sizes.append(len(queries))
+            return [
+                DeterministicValidityReader.answer_with_trace(self, query, context)
+                for query, context in zip(queries, contexts)
+            ]
+
+    records = [
+        _normalized_record(
+            context_id="batch-1",
+            updates=[
+                make_record(
+                    entry_id="u1",
+                    entity="user",
+                    attribute="home_city",
+                    value="Boston",
+                    timestamp=0,
+                    session_id="batch-1",
+                )
+            ],
+            queries=[
+                make_query(
+                    query_id="q1",
+                    entity="user",
+                    attribute="home_city",
+                    question="Where do I live?",
+                    timestamp=1,
+                    session_id="batch-1",
+                )
+            ],
+            answers=["Boston"],
+        ),
+        _normalized_record(
+            context_id="batch-2",
+            updates=[
+                make_record(
+                    entry_id="u2",
+                    entity="user",
+                    attribute="home_city",
+                    value="Seattle",
+                    timestamp=0,
+                    session_id="batch-2",
+                )
+            ],
+            queries=[
+                make_query(
+                    query_id="q2",
+                    entity="user",
+                    attribute="home_city",
+                    question="Where do I live?",
+                    timestamp=1,
+                    session_id="batch-2",
+                )
+            ],
+            answers=["Seattle"],
+        ),
+    ]
+    reasoner = BatchTrackingReasoner()
+    events = []
+
+    result = evaluate_structured_policy_full(
+        AppendOnlyMemoryPolicy,
+        reasoner,
+        records,
+        reader_flush_size=8,
+        progress_callback=events.append,
+        benchmark_name="test",
+    )
+
+    assert result.metrics.accuracy == 1.0
+    assert reasoner.batch_sizes == [2]
+    assert [event.phase for event in events].count("case_prepared") == 2
+    assert [event.phase for event in events].count("case_finished") == 2
+
+
+def test_dataset_experiment_streams_cases_and_reports_policy_finished(tmp_path) -> None:
+    records = [
+        _normalized_record(
+            context_id="ctx",
+            updates=[
+                make_record(
+                    entry_id="u1",
+                    entity="user",
+                    attribute="home_city",
+                    value="Boston",
+                    timestamp=0,
+                    session_id="ctx",
+                )
+            ],
+            queries=[
+                make_query(
+                    query_id="q1",
+                    entity="user",
+                    attribute="home_city",
+                    question="Where do I live?",
+                    timestamp=1,
+                    session_id="ctx",
+                )
+            ],
+            answers=["Boston"],
+        )
+    ]
+    dataset = NormalizedDataset(records=records, total_contexts=1, total_cases=1)
+    cases_output = tmp_path / "cases.jsonl"
+    events = []
+
+    result = run_dataset_experiment(
+        benchmark_name="test",
+        dataset=dataset,
+        reasoner=DeterministicValidityReader(),
+        policy_factories=[AppendOnlyMemoryPolicy],
+        cases_output=str(cases_output),
+        progress_callback=events.append,
+    )
+
+    rows = [json.loads(line) for line in cases_output.read_text().splitlines()]
+    assert result.metrics[0].accuracy == 1.0
+    assert rows[0]["policy_name"] == "append_only"
+    assert rows[0]["case_id"] == "q1"
+    assert [event.phase for event in events][-1] == "policy_finished"
 
 
 def _normalized_record(context_id: str, updates, queries, answers) -> NormalizedRecord:

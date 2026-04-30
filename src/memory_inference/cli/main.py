@@ -22,7 +22,7 @@ from memory_inference.llm.deterministic_reader import DeterministicValidityReade
 from memory_inference.llm.fixed_prompt_reader import FixedPromptReader
 from memory_inference.llm.local_config import LocalModelConfig
 from memory_inference.llm.local_hf_reasoner import LocalHFReasoner
-from memory_inference.orchestration.experiment import run_dataset_experiment
+from memory_inference.orchestration.experiment import ProgressEvent, run_dataset_experiment
 from memory_inference.orchestration.presets import all_policy_factories, policy_factories_for_names
 
 
@@ -34,6 +34,10 @@ class _CallableCliModule(types.ModuleType):
 def main(argv: Sequence[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "reader_flush_size", 0) < 0:
+        parser.error("--reader-flush-size must be >= 0")
+    if getattr(args, "inference_batch_size", 1) < 1:
+        parser.error("--inference-batch-size must be >= 1")
 
     if args.command == "preprocess-longmemeval":
         preprocess_longmemeval(args.input, args.output)
@@ -45,6 +49,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     reasoner = build_reasoner(args)
     dataset = load_dataset(args)
     dataset = filter_dataset(dataset, categories=args.category, query_modes=args.query_mode)
+    validate_output_paths(args, parser)
     policy_factories = select_policy_factories(args.policy)
     result = run_dataset_experiment(
         benchmark_name=args.command,
@@ -54,6 +59,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         manifest_config=manifest_config(args, argv),
         manifest_output=args.output,
         cases_output=args.cases_output,
+        reader_flush_size=args.reader_flush_size,
+        progress_callback=_print_progress_event if args.progress else None,
     )
     for row in result.metrics:
         print(
@@ -239,6 +246,9 @@ def manifest_config(args: argparse.Namespace, argv: Sequence[str] | None = None)
         "prompt_template_id": getattr(args, "prompt_template_id", None),
         "trust_remote_code": getattr(args, "trust_remote_code", None),
         "use_chat_template": not getattr(args, "no_chat_template", False),
+        "reader_flush_size": getattr(args, "reader_flush_size", 0),
+        "progress": getattr(args, "progress", False),
+        "overwrite_output": getattr(args, "overwrite_output", False),
         "official_mem0": {
             "llm_provider": os.getenv("MEM0_LLM_PROVIDER", ""),
             "llm_model": os.getenv("MEM0_LLM_MODEL", ""),
@@ -272,6 +282,21 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--category", action="append", default=[], help="Keep only benchmark category.")
     parser.add_argument("--query-mode", action="append", default=[], help="Keep only query mode enum name.")
     parser.add_argument("--limit", type=int, default=None, help="Max records to process.")
+    parser.add_argument(
+        "--overwrite-output",
+        action="store_true",
+        help="Allow manifest and case output files to be overwritten.",
+    )
+    parser.add_argument(
+        "--reader-flush-size",
+        type=int,
+        default=0,
+        help=(
+            "Accumulate this many retrieved cases before calling the reader. "
+            "Use 0 to batch the whole policy."
+        ),
+    )
+    parser.add_argument("--progress", action="store_true", help="Print per-case and per-policy progress.")
     _add_local_model_args(parser)
 
 
@@ -287,6 +312,83 @@ def _add_local_model_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--prompt-template-id", default="validity-v1")
     parser.add_argument("--trust-remote-code", action="store_true")
     parser.add_argument("--no-chat-template", action="store_true")
+
+
+def validate_output_paths(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if getattr(args, "overwrite_output", False):
+        return
+    existing = [
+        path
+        for path in (
+            getattr(args, "output", ""),
+            getattr(args, "cases_output", ""),
+        )
+        if path and Path(path).exists()
+    ]
+    if existing:
+        formatted = ", ".join(existing)
+        parser.error(
+            f"Refusing to overwrite existing output file(s): {formatted}. "
+            "Use --overwrite-output or choose a fresh RESULT_DIR."
+        )
+
+
+def _print_progress_event(event: ProgressEvent) -> None:
+    if event.phase == "context_started":
+        print(
+            f"context started: benchmark={event.benchmark} "
+            f"policy={event.policy_name} policies={event.policy_index}/{event.policy_total} "
+            f"context={event.context_index}/{event.context_total} "
+            f"context_id={event.context_id} updates={event.update_count}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    if event.phase == "context_finished":
+        print(
+            f"context finished: benchmark={event.benchmark} "
+            f"policy={event.policy_name} policies={event.policy_index}/{event.policy_total} "
+            f"context={event.context_index}/{event.context_total} "
+            f"context_id={event.context_id} updates={event.update_count} "
+            f"snapshot_size={event.snapshot_size} elapsed_ms={event.elapsed_ms:.2f}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    if event.phase == "case_prepared":
+        print(
+            f"case prepared: benchmark={event.benchmark} "
+            f"policy={event.policy_name} policies={event.policy_index}/{event.policy_total} "
+            f"case={event.case_index}/{event.case_total} "
+            f"case_id={event.case_id} context_id={event.context_id} "
+            f"retrieved_items={event.retrieved_items}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    if event.phase == "case_finished":
+        print(
+            f"case finished: benchmark={event.benchmark} "
+            f"policy={event.policy_name} policies={event.policy_index}/{event.policy_total} "
+            f"case={event.case_index}/{event.case_total} "
+            f"case_id={event.case_id} context_id={event.context_id} "
+            f"correct={int(bool(event.correct))} cache_hit={int(bool(event.cache_hit))} "
+            f"reader_batch_size={event.reader_batch_size or 'unknown'} "
+            f"prompt_tokens={event.prompt_tokens} completion_tokens={event.completion_tokens}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return
+    if event.phase == "policy_finished" and event.metrics is not None:
+        print(
+            f"policy finished: benchmark={event.benchmark} "
+            f"policy={event.policy_name} policies={event.policy_index}/{event.policy_total} "
+            f"cases={event.metrics.total_queries} accuracy={event.metrics.accuracy:.3f} "
+            f"retrieval_hit={event.metrics.retrieval_hit_rate:.3f} "
+            f"cache_hit={event.metrics.cache_hit_rate:.3f}",
+            file=sys.stderr,
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

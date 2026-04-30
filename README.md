@@ -93,9 +93,18 @@ MEM0_RAW_FALLBACK_ON_EMPTY=true
 MEM0_REQUIRE_NONEMPTY=true
 MEM0_QUIET=true
 MEM0_REUSE_CLIENT=true
+INFERENCE_BATCH_SIZE=64
+READER_FLUSH_SIZE=64
+PROGRESS=1
+RESULT_DIR=results/official_mem0_<utc-run-id>
+LOG_DIR=results/official_mem0_<utc-run-id>/logs
+DIAGNOSTIC_DIR=results/official_mem0_<utc-run-id>/diagnostics
+OVERWRITE_RESULTS=0
 ```
 
 The official Mem0 runner starts with a smoke test. If Mem0 stores no searchable memory, the run fails instead of producing an all-zero report. The raw fallback uses Mem0's documented `infer=False` path only when local extraction returns zero memories for a non-empty context. Loader warnings from Mem0 and SentenceTransformers are suppressed by default; set `MEM0_QUIET=false` if you need to debug provider initialization.
+
+The runner prints `runner starting`, `context started`, `context finished`, `case prepared`, `case finished`, `policy finished`, and `runner finished` progress lines. Per-case diagnostics are streamed to JSONL as cases finish, so interrupted runs leave partial case files. The run directory contains `logs/run.log`, `logs/run.err`, and diagnostic snapshots for the environment, git state, and GPU state. If the script exits nonzero, it writes `diagnostics/failure_report.txt`. Existing output files are not overwritten unless `OVERWRITE_RESULTS=1`. Reader calls are accumulated across contexts up to `READER_FLUSH_SIZE`, which keeps local Hugging Face inference better batched on large GPUs such as an H100. This does not parallelize Mem0 extraction itself; if `MEM0_ADD_INFER=true` with Ollama, extraction can still be the slow stage.
 
 If using vLLM instead of Ollama:
 
@@ -109,10 +118,13 @@ bash scripts/run_official_mem0_package.sh
 Outputs:
 
 ```text
-results/official_mem0_summary.csv
-results/official_mem0_audit.jsonl
-results/official_mem0_longmemeval_*_cases.jsonl
-results/longmemeval_input.sha256
+results/official_mem0_<utc-run-id>/official_mem0_summary.csv
+results/official_mem0_<utc-run-id>/official_mem0_audit.jsonl
+results/official_mem0_<utc-run-id>/official_mem0_longmemeval_*_cases.jsonl
+results/official_mem0_<utc-run-id>/longmemeval_input.sha256
+results/official_mem0_<utc-run-id>/logs/run.log
+results/official_mem0_<utc-run-id>/logs/run.err
+results/official_mem0_<utc-run-id>/diagnostics/*
 ```
 
 ## Run Local Ablations
