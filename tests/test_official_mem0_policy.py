@@ -23,11 +23,12 @@ class FakeMem0Client:
             }
         )
 
-    def search(self, query, user_id, limit=None):
+    def search(self, query, user_id=None, filters=None, limit=None):
         self.search_calls.append(
             {
                 "query": query,
-                "user_id": user_id,
+                "user_id": user_id or (filters or {}).get("user_id"),
+                "filters": filters or {},
                 "limit": limit,
             }
         )

@@ -100,9 +100,16 @@ class OfficialMem0Policy(BaseMemoryPolicy):
     def _search(self, query: str, *, top_k: int) -> Any:
         client = self._ensure_client()
         try:
-            return client.search(query, user_id=self.user_id, limit=top_k)
-        except TypeError:
-            return client.search(query, user_id=self.user_id)
+            return client.search(
+                query,
+                filters={"user_id": self.user_id},
+                limit=top_k,
+            )
+        except (TypeError, ValueError):
+            try:
+                return client.search(query, user_id=self.user_id, limit=top_k)
+            except TypeError:
+                return client.search(query, user_id=self.user_id)
 
     def _ensure_client(self) -> Any:
         if self.client is None:
