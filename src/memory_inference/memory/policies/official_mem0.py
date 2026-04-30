@@ -236,9 +236,9 @@ def official_mem0_local_config_from_env() -> dict[str, Any]:
     collection_name = _safe_collection_name(
         os.getenv("MEM0_COLLECTION_NAME", f"official_mem0_{uuid.uuid4().hex}")
     )
-    embedding_dims = int(os.getenv("MEM0_EMBEDDING_DIMS", "768"))
+    embedding_dims = int(os.getenv("MEM0_EMBEDDING_DIMS", "384"))
     llm_provider = os.getenv("MEM0_LLM_PROVIDER", "ollama")
-    embedder_provider = os.getenv("MEM0_EMBEDDER_PROVIDER", "ollama")
+    embedder_provider = os.getenv("MEM0_EMBEDDER_PROVIDER", "huggingface")
     vector_provider = os.getenv("MEM0_VECTOR_STORE_PROVIDER", "qdrant")
 
     return {

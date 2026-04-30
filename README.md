@@ -1,20 +1,28 @@
-# Technical Brief: Validity-Aware Memory for Frozen Long-Horizon LLM Agents
+# Evidence-Gated Memory for Long-Horizon Agents
+
+Suggested repository title: **Evidence-Gated Agent Memory** (`evidence-gated-agent-memory`).
+
+This repository evaluates whether a conservative validity gate can improve or
+compress long-horizon agent memory without changing the frozen reader model.
+The current paper target is an ICML SCALE-style workshop submission about
+**evidence-gated context filtering over Mem0/official-Mem0 retrieval**, not a
+claim that a new retriever broadly beats long-memory benchmarks.
 
 ## Overview
 
 This project studies a narrow but important memory problem in long-horizon LLM agents:
 
-**when the base model is frozen, can an external memory layer improve inference by explicitly maintaining which information is still valid over time?**
+**when the base model is frozen, can an external memory layer safely filter retrieved context by explicitly maintaining which information is still valid over time?**
 
 The project is not framed around the general claim that LLM agents need memory. That point is already well established. There is substantial prior work on retrieval-augmented generation, memory streams, summarization, reflection, hierarchical memory, and long-term memory systems for agents. The focus here is more specific: **semantic memory updating under frozen-model interference**.
 
-The motivating observation is that long-running agents often accumulate multiple versions of the same fact, preference, or task state. In these settings, the failure mode is not simply missing retrieval. A retrieval system may surface relevant evidence while still leaving the frozen model to infer which memory version supersedes which, whether an earlier state has been restored, whether two memories conflict, or whether two values can coexist under different scopes. This project asks whether making that validity structure explicit in the external memory layer improves downstream inference.
+The motivating observation is that long-running agents often accumulate multiple versions of the same fact, preference, or task state. In these settings, the failure mode is not simply missing retrieval. A retrieval system may surface relevant evidence while still leaving the frozen model to infer which memory version supersedes which, whether an earlier state has been restored, whether two memories conflict, or whether two values can coexist under different scopes. This project asks whether making that validity structure explicit in the external memory layer can preserve answer accuracy while reducing prompt context or preventing stale-state interference.
 
 ## Research goal
 
 The central research question is:
 
-**With model weights frozen, how does explicit memory-state maintenance affect inference quality, robustness, and efficiency in long-horizon LLM agents?**
+**Can an evidence-gated validity controller attached to Mem0 preserve answer accuracy while reducing retrieved context on validity-sensitive long-memory questions?**
 
 The scope is intentionally restricted to inference-time memory methods:
 
@@ -22,6 +30,16 @@ The scope is intentionally restricted to inference-time memory methods:
 - no model weight updates
 - no retriever training during evaluation
 - only the external memory layer changes
+
+The strongest current comparison is:
+
+```text
+official_mem0
+official_mem0 + ODV2 evidence gate
+```
+
+The local `mem0`/`odv2_mem0_selective` comparison remains useful for ablations,
+but the official-Mem0 path is the reviewer-facing credibility upgrade.
 
 The target setting includes memory streams containing:
 
@@ -62,11 +80,11 @@ That gap appears in several concrete forms:
 - the memory layer may fail to distinguish reversion from ordinary overwrite
 - low-confidence or aliased memories may remain visible to inference even when they should not affect active state
 
-The research hypothesis is that explicit validity-aware memory maintenance can reduce stale-memory interference and lower the amount of history that must be surfaced during inference.
+The research hypothesis is that explicit validity-aware memory maintenance can reduce stale-memory interference or lower the amount of history that must be surfaced during inference, provided the gate is conservative enough to avoid false suppressions.
 
 ## Proposed solution direction
 
-The method explored in this repository is a **validity-aware external memory architecture** with an **incremental consolidation layer**.
+The method explored in this repository is **ODV2-selective**, a validity-aware external memory controller with an incremental consolidation layer and an evidence-gated post-retrieval filter.
 
 At a high level, the system maintains:
 
@@ -85,27 +103,60 @@ New memory updates are classified into validity-relevant operations such as:
 - unresolved conflict
 - low confidence
 
-Rather than rewriting the full memory store, the method updates only the affected slice of state. At inference time, the system retrieves current-state memory first and falls back to provenance or history only when needed.
+Rather than rewriting the full memory store, the method updates only the affected slice of state. At inference time, the headline policy does not inject extra ODV2-only evidence. It starts from the baseline retriever output and removes context only when linked support, current/archive state, and query type make the edit low-risk.
 
-The intended benefit is not only lower context cost. More importantly, the method is designed to give the agent an explicit mechanism for **semantic memory updating**, so that the frozen model is not forced to infer the full revision structure from a noisy history on every query.
+The intended benefit is not benchmark-wide accuracy dominance. The defensible target is a precision-first result: preserve baseline accuracy, introduce no or very few paired losses, reduce prompt context on intervention cases, and show any wins as preliminary evidence rather than broad benchmark superiority.
 
 ## Evaluation design
 
-The evaluation path in this repository is focused on two real conversational memory benchmarks. The current codebase runs:
+The evaluation path in this repository is focused on real conversational memory benchmarks and predeclared validity-sensitive slices. The current codebase runs:
 
 - LongMemEval-style question answering over long conversational histories
 - LoCoMo-style question answering over multi-session conversational histories
 
-Those runs are evaluated with downstream task metrics such as QA accuracy, context size, and latency under a frozen reader. The main comparison is therefore between memory policies, not between custom benchmark generators.
+Those runs are evaluated with downstream task metrics such as QA accuracy, paired wins/losses, context size, and latency under a frozen reader. The main comparison is therefore between memory policies, not between custom benchmark generators.
 
 ## Final reporting path
 
 The current reviewer-facing comparison is intentionally narrow:
 
-- baseline: `mem0`
-- target: `odv2_mem0_selective`
+- baseline: `official_mem0`
+- target: `official_mem0_odv2_selective`
 - primary benchmark: selected LongMemEval current-state categories
 - diagnostic slices: ODV2 intervention cases, gold-mismatched same-key exposure, and same-key conflicts
+
+Run this official-Mem0 package first:
+
+```bash
+bash scripts/run_official_mem0_package.sh
+```
+
+This writes:
+
+- `results/official_mem0_summary.csv`
+- `results/official_mem0_audit.jsonl`
+- `results/official_mem0_longmemeval_*_cases.jsonl`
+- `results/longmemeval_input.sha256` when the input file is available
+
+The official Mem0 path defaults to:
+
+- `MEM0_LLM_PROVIDER=ollama`
+- `MEM0_LLM_MODEL=llama3.1:8b`
+- `MEM0_EMBEDDER_PROVIDER=huggingface`
+- `MEM0_EMBEDDER_MODEL=sentence-transformers/all-MiniLM-L6-v2`
+- `MEM0_EMBEDDING_DIMS=384`
+- `MEM0_VECTOR_STORE_PROVIDER=qdrant`
+
+The Llama setting controls Mem0's memory-extraction LLM. The embedder is a
+separate SentenceTransformers model because Mem0 still needs vector
+representations for retrieval. This is a standard implementation detail for a
+valid official-Mem0 comparison, not a separate research claim.
+
+If you install or update dependencies for the official path:
+
+```bash
+python -m pip install -e ".[official-mem0]"
+```
 
 Run the stronger results package with Mem0, ODV2 ablations, full ODV2-selective,
 and an aggressive negative-control variant:
@@ -142,33 +193,21 @@ POLICIES="mem0 odv2_support_compact odv2_stale_guard odv2_mem0_selective odv2_me
   bash scripts/run_longmemeval_slice.sh multi-session
 ```
 
-To run the official Mem0 comparison with a local Llama-backed Mem0 OSS stack:
-
-```bash
-pip install ".[official-mem0]"
-ollama pull llama3.1:8b
-ollama pull nomic-embed-text:latest
-bash scripts/run_official_mem0_package.sh
-```
-
-The official Mem0 path defaults to local providers:
-
-- `MEM0_LLM_PROVIDER=ollama`
-- `MEM0_LLM_MODEL=llama3.1:8b`
-- `MEM0_EMBEDDER_PROVIDER=ollama`
-- `MEM0_EMBEDDER_MODEL=nomic-embed-text:latest`
-- `MEM0_VECTOR_STORE_PROVIDER=qdrant`
-
-The Llama setting controls Mem0's memory-extraction LLM. The embedder remains a
-separate embedding model because Mem0 still needs vector representations for
-search; this is an implementation detail for a valid official-Mem0 comparison,
-not a separate research claim.
-
 For a vLLM-served local Llama model, start vLLM separately and run:
 
 ```bash
 MEM0_LLM_PROVIDER=vllm \
 MEM0_LLM_MODEL=meta-llama/Llama-3.1-8B-Instruct \
+VLLM_BASE_URL=http://localhost:8000/v1 \
+bash scripts/run_official_mem0_package.sh
+```
+
+If Ollama is unavailable, keep the HuggingFace embedder default and point Mem0's
+LLM to vLLM:
+
+```bash
+MEM0_LLM_PROVIDER=vllm \
+MEM0_LLM_MODEL=Qwen/Qwen2.5-7B-Instruct \
 VLLM_BASE_URL=http://localhost:8000/v1 \
 bash scripts/run_official_mem0_package.sh
 ```
@@ -202,9 +241,9 @@ This repository serves as the experimental scaffold for that research direction.
 
 ## Intended contribution
 
-The intended contribution is not a generic claim about memory for agents. A more defensible formulation is:
+The intended contribution is not a generic claim about memory for agents or a claim that ODV2 broadly beats Mem0. A more defensible formulation is:
 
-**This project studies whether external memory can explicitly maintain semantic validity under revision and conflict, and whether that reduces stale-memory interference for frozen LLM agents.**
+**This project studies whether a deterministic validity gate can be attached to Mem0-style or official Mem0 retrieval to preserve answer accuracy while reducing context on predeclared validity-sensitive slices.**
 
 That framing aligns the method, benchmark, and evaluation target. It also positions the work more carefully relative to current literature by focusing on validity maintenance as a distinct technical problem within the broader agent-memory space.
 

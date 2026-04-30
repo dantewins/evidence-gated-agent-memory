@@ -48,10 +48,10 @@ def test_official_mem0_config_defaults_to_local_llama_and_ollama(monkeypatch) ->
 
     assert config["llm"]["provider"] == "ollama"
     assert config["llm"]["config"]["model"] == "llama3.1:8b"
-    assert config["embedder"]["provider"] == "ollama"
-    assert config["embedder"]["config"]["model"] == "nomic-embed-text:latest"
+    assert config["embedder"]["provider"] == "huggingface"
+    assert config["embedder"]["config"]["model"] == "sentence-transformers/all-MiniLM-L6-v2"
     assert config["vector_store"]["provider"] == "qdrant"
-    assert config["vector_store"]["config"]["embedding_model_dims"] == 768
+    assert config["vector_store"]["config"]["embedding_model_dims"] == 384
 
 
 def test_official_mem0_policy_adapts_add_and_search_to_repo_records() -> None:

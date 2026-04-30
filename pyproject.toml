@@ -16,9 +16,11 @@ local-hf = [
     "transformers>=4.40",
 ]
 official-mem0 = [
+    "fastembed>=0.3",
     "mem0ai>=0.1",
     "ollama>=0.4",
     "qdrant-client>=1.9",
+    "sentence-transformers>=3.0",
 ]
 
 [project.scripts]
