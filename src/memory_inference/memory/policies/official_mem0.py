@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import os
 import re
 import uuid
@@ -11,6 +14,10 @@ from memory_inference.domain.query import RuntimeQuery
 from memory_inference.llm.consolidator_base import BaseConsolidator
 from memory_inference.memory.policies.interface import BaseMemoryPolicy
 from memory_inference.memory.policies.odv2 import ODV2Policy
+
+
+_DEFAULT_COLLECTION_NAME = f"official_mem0_{uuid.uuid4().hex}"
+_MEM0_CLIENT_CACHE: dict[str, Any] = {}
 
 
 class OfficialMem0Policy(BaseMemoryPolicy):
@@ -138,17 +145,20 @@ class OfficialMem0Policy(BaseMemoryPolicy):
             "add_mode": add_mode,
         }
         try:
-            client.add(
-                messages,
-                user_id=self.user_id,
-                metadata=metadata,
-                infer=infer,
-            )
+            with _quiet_mem0_output():
+                client.add(
+                    messages,
+                    user_id=self.user_id,
+                    metadata=metadata,
+                    infer=infer,
+                )
         except TypeError:
             try:
-                client.add(messages, user_id=self.user_id, metadata=metadata)
+                with _quiet_mem0_output():
+                    client.add(messages, user_id=self.user_id, metadata=metadata)
             except TypeError:
-                client.add(messages, user_id=self.user_id)
+                with _quiet_mem0_output():
+                    client.add(messages, user_id=self.user_id)
 
     def _search(self, query: str, *, top_k: int) -> Any:
         client = self._ensure_client()
@@ -162,7 +172,8 @@ class OfficialMem0Policy(BaseMemoryPolicy):
         last_error: Exception | None = None
         for attempt in attempts:
             try:
-                return attempt()
+                with _quiet_mem0_output():
+                    return attempt()
             except (TypeError, ValueError) as exc:
                 last_error = exc
         if last_error is not None:
@@ -181,7 +192,8 @@ class OfficialMem0Policy(BaseMemoryPolicy):
         )
         for attempt in attempts:
             try:
-                return len(_normalize_mem0_results(attempt()))
+                with _quiet_mem0_output():
+                    return len(_normalize_mem0_results(attempt()))
             except (TypeError, ValueError):
                 continue
         return None
@@ -309,7 +321,7 @@ def official_mem0_local_config_from_env() -> dict[str, Any]:
     """Build a local-first Mem0 OSS config from environment variables."""
 
     collection_name = _safe_collection_name(
-        os.getenv("MEM0_COLLECTION_NAME", f"official_mem0_{uuid.uuid4().hex}")
+        os.getenv("MEM0_COLLECTION_NAME", _DEFAULT_COLLECTION_NAME)
     )
     embedding_dims = int(os.getenv("MEM0_EMBEDDING_DIMS", "384"))
     llm_provider = os.getenv("MEM0_LLM_PROVIDER", "ollama")
@@ -342,10 +354,34 @@ def _build_mem0_client(config: dict[str, Any] | None = None) -> Any:
     except ImportError as exc:
         raise ImportError(
             "official_mem0 requires the optional Mem0 OSS dependency. "
-            "Install with `pip install mem0ai qdrant-client ollama`, then run "
+            "Install with `pip install -e \".[official-mem0]\"`, then run "
             "with local providers such as MEM0_LLM_PROVIDER=ollama."
         ) from exc
-    return Memory.from_config(config or official_mem0_local_config_from_env())
+
+    effective_config = config or official_mem0_local_config_from_env()
+    reuse_client = _env_bool("MEM0_REUSE_CLIENT", True)
+    cache_key = _mem0_config_cache_key(effective_config)
+    if reuse_client and cache_key in _MEM0_CLIENT_CACHE:
+        return _MEM0_CLIENT_CACHE[cache_key]
+
+    with _quiet_mem0_output():
+        client = Memory.from_config(effective_config)
+    if reuse_client:
+        _MEM0_CLIENT_CACHE[cache_key] = client
+    return client
+
+
+def _mem0_config_cache_key(config: dict[str, Any]) -> str:
+    return json.dumps(config, sort_keys=True, default=str)
+
+
+@contextlib.contextmanager
+def _quiet_mem0_output():
+    if not _env_bool("MEM0_QUIET", True):
+        yield
+        return
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        yield
 
 
 def _vector_store_config(
