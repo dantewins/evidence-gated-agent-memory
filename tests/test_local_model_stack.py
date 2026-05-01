@@ -176,7 +176,7 @@ def test_local_hf_reasoner_uses_dtype_load_kwarg() -> None:
         bfloat16 = "bf16"
 
     reasoner = LocalHFReasoner(LocalModelConfig(model_id="fake", dtype="bfloat16"))
-    assert reasoner._model_load_kwargs(DummyTorch()) == {"device_map": "auto", "dtype": "bf16"}
+    assert reasoner._model_load_kwargs(DummyTorch()) == {"device_map": "auto", "torch_dtype": "bf16"}
 
 
 def test_local_hf_reasoner_omits_sampling_kwargs_for_greedy_generation() -> None:
