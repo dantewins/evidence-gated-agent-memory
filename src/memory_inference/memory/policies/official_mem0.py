@@ -340,9 +340,10 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
         current_entries = self.validity.current_entries_for_query(query)
         archive_entries = self.validity.archive_entries_for_query(query)
         if self.gate_mode == "compact":
-            compact_records = _compact_current_records_for_query(
+            compact_records = _compact_records_for_query(
                 query,
                 current_entries,
+                self.validity.episodic_log,
                 limit=min(top_k, self.compact_top_k),
             )
             if compact_records:
@@ -714,27 +715,24 @@ def _query_allows_official_mem0_gate(query: RuntimeQuery) -> bool:
     return query.attribute not in {"dialogue", "event"}
 
 
-def _compact_current_records_for_query(
+def _compact_records_for_query(
     query: RuntimeQuery,
     current_entries: list[MemoryRecord],
+    episodic_log: list[MemoryRecord],
     *,
     limit: int,
 ) -> list[MemoryRecord]:
-    if not current_entries:
-        return []
     decisive = _decisive_current_entries(query, current_entries)
-    if decisive:
-        return decisive[:1]
+    ranked_candidates = _rank_compact_candidates(query, episodic_log)
 
-    scored = [
-        (score, entry)
-        for entry in _dedupe_records_by_value(current_entries)
-        if (score := _current_record_query_score(query, entry)) > 0.0
-    ]
-    if not scored:
+    records: list[MemoryRecord] = []
+    if decisive and _current_record_query_score(query, decisive[0]) >= 2.0:
+        records.extend(decisive[:1])
+    records.extend(entry for _, entry in ranked_candidates)
+    records = _dedupe_records_by_value(records)
+    if not records:
         return []
-    scored.sort(key=lambda item: item[0], reverse=True)
-    return [entry for _, entry in scored[:limit]]
+    return records[:limit]
 
 
 def _decisive_current_entries(
@@ -765,12 +763,41 @@ def _current_record_query_score(query: RuntimeQuery, entry: MemoryRecord) -> flo
     return float(overlap) + status_bonus + support_bonus + (entry.timestamp * 0.0001)
 
 
+def _rank_compact_candidates(
+    query: RuntimeQuery,
+    records: Iterable[MemoryRecord],
+) -> list[tuple[float, MemoryRecord]]:
+    scored: list[tuple[float, MemoryRecord]] = []
+    for entry in records:
+        if not _record_matches_compact_query(entry, query):
+            continue
+        score = _current_record_query_score(query, entry)
+        if score < 2.0:
+            continue
+        scored.append((score, entry))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return scored
+
+
+def _record_matches_compact_query(record: MemoryRecord, query: RuntimeQuery) -> bool:
+    if query.entity not in {"conversation", "all"} and record.entity != query.entity:
+        return False
+    if record.attribute != query.attribute:
+        return False
+    if record.attribute in {"dialogue", "event"}:
+        return False
+    return record.source_kind == "structured_fact" or record.memory_kind in {"state", "event"}
+
+
 def _rank_terms(text: str) -> set[str]:
-    return {
-        term
-        for term in _TERM_RE.findall(text.lower())
-        if term not in _RANK_STOPWORDS and len(term) > 1
-    }
+    terms: set[str] = set()
+    for raw_term in _TERM_RE.findall(text.lower()):
+        if raw_term in _RANK_STOPWORDS or len(raw_term) <= 1:
+            continue
+        terms.add(raw_term)
+        if len(raw_term) > 3 and raw_term.endswith("s"):
+            terms.add(raw_term[:-1])
+    return terms
 
 
 def _dedupe_records_by_value(records: Iterable[MemoryRecord]) -> list[MemoryRecord]:

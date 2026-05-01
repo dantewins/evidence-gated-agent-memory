@@ -170,7 +170,11 @@ def test_official_mem0_odv2_compact_mode_replaces_verbose_mem0_context() -> None
                 value="Google",
                 timestamp=1,
                 session_id="s",
-                metadata={"source_kind": "structured_fact", "memory_kind": "state"},
+                metadata={
+                    "source_kind": "structured_fact",
+                    "memory_kind": "state",
+                    "support_text": "Alice used to work at Google.",
+                },
             ),
             make_record(
                 entry_id="fact-meta",
@@ -179,7 +183,11 @@ def test_official_mem0_odv2_compact_mode_replaces_verbose_mem0_context() -> None
                 value="Meta",
                 timestamp=2,
                 session_id="s",
-                metadata={"source_kind": "structured_fact", "memory_kind": "state"},
+                metadata={
+                    "source_kind": "structured_fact",
+                    "memory_kind": "state",
+                    "support_text": "Alice now works at Meta.",
+                },
             ),
         ]
     )
@@ -197,13 +205,13 @@ def test_official_mem0_odv2_compact_mode_replaces_verbose_mem0_context() -> None
         )
     )
 
-    assert [entry.value for entry in result.entries] == ["Meta"]
+    assert [entry.value for entry in result.entries] == ["Meta", "Google"]
     assert result.debug["retrieval_mode"] == "official_mem0_odv2_compact_current"
     assert result.debug["official_mem0_odv2_gate_mode"] == "compact"
     assert result.debug["official_mem0_odv2_base_records"] == "2"
-    assert result.debug["official_mem0_odv2_returned_records"] == "1"
-    assert result.debug["validity_removed"] == "1"
-    assert result.debug["validity_appended"] == "1"
+    assert result.debug["official_mem0_odv2_returned_records"] == "2"
+    assert result.debug["validity_removed"] == "0"
+    assert result.debug["validity_appended"] == "2"
 
 
 def test_official_mem0_odv2_compact_mode_ranks_multiple_current_values() -> None:
