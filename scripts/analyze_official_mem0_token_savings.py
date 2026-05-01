@@ -41,7 +41,7 @@ def main() -> int:
     _print_metric("retrieved_items", pairs, lambda row: int(row.get("retrieved_items") or 0))
 
     gate_rows = [odv2 for _, odv2 in pairs]
-    print(f"compact_rows={sum(row.get('retrieval_mode') == 'official_mem0_odv2_compact_current' for row in gate_rows)}")
+    print(f"compact_rows={sum(_is_compact_row(row) for row in gate_rows)}")
     print(f"guard_rows={sum(row.get('retrieval_mode') == 'official_mem0_odv2_guard' for row in gate_rows)}")
     print(f"validity_removed={sum(int(row.get('validity_removed') or 0) for row in gate_rows)}")
     print(f"validity_appended={sum(int(row.get('validity_appended') or 0) for row in gate_rows)}")
@@ -65,10 +65,7 @@ def main() -> int:
         odv2_tokens = sum(int(odv2.get("prompt_tokens") or 0) for _, odv2 in category_pairs)
         delta = odv2_tokens - base_tokens
         pct = (delta / base_tokens * 100.0) if base_tokens else 0.0
-        compact = sum(
-            odv2.get("retrieval_mode") == "official_mem0_odv2_compact_current"
-            for _, odv2 in category_pairs
-        )
+        compact = sum(_is_compact_row(odv2) for _, odv2 in category_pairs)
         print(
             f"  {category}: n={len(category_pairs)} prompt_delta={delta} "
             f"prompt_delta_pct={pct:.2f}% compact_rows={compact}"
@@ -126,6 +123,10 @@ def _print_metric(
         f"{label}: official_mem0={base_total} "
         f"official_mem0_odv2_selective={odv2_total} delta={delta} delta_pct={pct:.2f}%"
     )
+
+
+def _is_compact_row(row: dict[str, Any]) -> bool:
+    return str(row.get("retrieval_mode") or "").startswith("official_mem0_odv2_compact")
 
 
 def _accuracy(rows) -> float:
