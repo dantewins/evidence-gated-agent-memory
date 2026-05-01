@@ -103,27 +103,43 @@ class OfficialMem0Policy(BaseMemoryPolicy):
         infer = _env_bool("MEM0_ADD_INFER", True)
         raw_fallback = _env_bool("MEM0_RAW_FALLBACK_ON_EMPTY", False)
         require_nonempty = _env_bool("MEM0_REQUIRE_NONEMPTY", False)
+        fail_on_raw_fallback = _env_bool("MEM0_FAIL_ON_RAW_FALLBACK", False)
 
         for batch in batches:
             self._client_add(client, batch, infer=infer, add_mode="infer" if infer else "raw")
 
         stored_count = self._stored_memory_count()
         fallback_used = False
+        fallback_blocked = False
         add_mode = "infer" if infer else "raw"
         if infer and raw_fallback and stored_count == 0:
-            for batch in batches:
-                self._client_add(client, batch, infer=False, add_mode="raw_fallback")
-            stored_count = self._stored_memory_count()
-            fallback_used = True
-            add_mode = "infer_then_raw_fallback"
+            if fail_on_raw_fallback:
+                fallback_blocked = True
+                add_mode = "infer_failed_raw_fallback_blocked"
+            else:
+                for batch in batches:
+                    self._client_add(client, batch, infer=False, add_mode="raw_fallback")
+                stored_count = self._stored_memory_count()
+                fallback_used = True
+                add_mode = "infer_then_raw_fallback"
 
         self._last_add_debug = {
             "official_mem0_add_mode": add_mode,
             "official_mem0_add_batches": str(len(batches)),
             "official_mem0_add_messages": str(len(prepared_messages)),
             "official_mem0_raw_fallback": "1" if fallback_used else "0",
+            "official_mem0_raw_fallback_blocked": "1" if fallback_blocked else "0",
             "official_mem0_stored_count": str(stored_count if stored_count is not None else -1),
         }
+        if fallback_blocked:
+            raise RuntimeError(
+                "Official Mem0 used raw fallback after infer=True stored zero memories. "
+                "This usually means the configured Mem0 LLM failed extraction, often because "
+                "the Mem0 add batch is too large for the serving context window. Reduce "
+                "MEM0_ADD_BATCH_SIZE or MEM0_ADD_MAX_MESSAGE_CHARS, lower "
+                "MEM0_LLM_MAX_TOKENS, or restart vLLM with a larger --max-model-len. "
+                f"debug={self._last_add_debug!r}"
+            )
         if require_nonempty and stored_count == 0:
             raise RuntimeError(
                 "Official Mem0 stored zero memories for a non-empty context. "

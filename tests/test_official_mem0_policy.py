@@ -1,3 +1,8 @@
+import importlib.util
+from pathlib import Path
+
+import pytest
+
 from memory_inference.domain.enums import QueryMode
 from memory_inference.llm.mock_consolidator import MockConsolidator
 from memory_inference.memory.policies.official_mem0 import (
@@ -218,7 +223,61 @@ def test_official_mem0_policy_raw_fallback_when_infer_stores_nothing(monkeypatch
     assert result.entries[0].value == "My codename is Redwood."
 
 
+def test_official_mem0_policy_can_fail_on_raw_fallback(monkeypatch) -> None:
+    monkeypatch.setenv("MEM0_RAW_FALLBACK_ON_EMPTY", "true")
+    monkeypatch.setenv("MEM0_FAIL_ON_RAW_FALLBACK", "true")
+    client = EmptyInferMem0Client()
+    policy = OfficialMem0Policy(client=client, user_id="u")
+
+    with pytest.raises(RuntimeError, match="raw fallback"):
+        policy.ingest([
+            make_record(entry_id="turn-1", attribute="dialogue", value="My codename is Redwood.")
+        ])
+
+    assert [call["infer"] for call in client.add_calls] == [True]
+
+
+def test_vllm_budget_preflight_rejects_oversized_mem0_batches() -> None:
+    module = _load_budget_script()
+    budget = module.VLLMBudget(
+        max_model_len=8192,
+        batch_size=32,
+        max_message_chars=2000,
+        max_tokens=512,
+        chars_per_token=4.0,
+        prompt_overhead_tokens=2000,
+        margin_tokens=512,
+    )
+
+    with pytest.raises(RuntimeError, match="MEM0_ADD_BATCH_SIZE<=10"):
+        module.validate_budget(budget)
+
+
+def test_vllm_budget_preflight_accepts_safe_mem0_batches() -> None:
+    module = _load_budget_script()
+    budget = module.VLLMBudget(
+        max_model_len=8192,
+        batch_size=8,
+        max_message_chars=2000,
+        max_tokens=512,
+        chars_per_token=4.0,
+        prompt_overhead_tokens=2000,
+        margin_tokens=512,
+    )
+
+    module.validate_budget(budget)
+
+
 def test_normalize_mem0_results_does_not_turn_empty_wrappers_into_memories() -> None:
     assert _normalize_mem0_results({"results": {"memories": []}, "relations": []}) == []
     assert _normalize_mem0_results({"results": [{"memory": "Alice likes tea"}]}) == [{"memory": "Alice likes tea"}]
 
+
+def _load_budget_script():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "check_mem0_vllm_budget.py"
+    spec = importlib.util.spec_from_file_location("check_mem0_vllm_budget", path)
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module

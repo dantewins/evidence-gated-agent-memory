@@ -54,6 +54,10 @@ def evaluated_case_to_diagnostic_row(
         "official_mem0_stored_count": _debug_int(evaluated, "official_mem0_stored_count"),
         "official_mem0_add_mode": evaluated.retrieval_bundle.debug.get("official_mem0_add_mode", ""),
         "official_mem0_raw_fallback": _debug_int(evaluated, "official_mem0_raw_fallback"),
+        "official_mem0_raw_fallback_blocked": _debug_int(
+            evaluated,
+            "official_mem0_raw_fallback_blocked",
+        ),
         "official_mem0_add_batches": _debug_int(evaluated, "official_mem0_add_batches"),
         "official_mem0_add_messages": _debug_int(evaluated, "official_mem0_add_messages"),
         "validity_removed": _debug_int(evaluated, "validity_removed"),

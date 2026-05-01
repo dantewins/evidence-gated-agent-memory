@@ -252,9 +252,14 @@ def manifest_config(args: argparse.Namespace, argv: Sequence[str] | None = None)
         "official_mem0": {
             "llm_provider": os.getenv("MEM0_LLM_PROVIDER", ""),
             "llm_model": os.getenv("MEM0_LLM_MODEL", ""),
+            "llm_max_tokens": os.getenv("MEM0_LLM_MAX_TOKENS", ""),
             "embedder_provider": os.getenv("MEM0_EMBEDDER_PROVIDER", ""),
             "embedder_model": os.getenv("MEM0_EMBEDDER_MODEL", ""),
             "vector_store_provider": os.getenv("MEM0_VECTOR_STORE_PROVIDER", ""),
+            "add_batch_size": os.getenv("MEM0_ADD_BATCH_SIZE", ""),
+            "add_max_message_chars": os.getenv("MEM0_ADD_MAX_MESSAGE_CHARS", ""),
+            "raw_fallback_on_empty": os.getenv("MEM0_RAW_FALLBACK_ON_EMPTY", ""),
+            "fail_on_raw_fallback": os.getenv("MEM0_FAIL_ON_RAW_FALLBACK", ""),
         },
     }
 

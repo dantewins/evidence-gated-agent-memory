@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from memory_inference.domain.enums import QueryMode
 from memory_inference.domain.memory import MemoryRecord
 from memory_inference.domain.query import RuntimeQuery
@@ -37,6 +39,17 @@ def main() -> int:
             "Official Mem0 smoke test failed: stored/searchable memory was not retrieved. "
             f"debug={result.debug!r}; retrieved={retrieved_text!r}"
         )
+    if (
+        result.debug.get("official_mem0_raw_fallback") == "1"
+        and not _env_bool("MEM0_ALLOW_RAW_FALLBACK_SMOKE", False)
+    ):
+        raise RuntimeError(
+            "Official Mem0 smoke test used raw fallback. This run would not validate the "
+            "configured Mem0 extraction LLM, so the benchmark is likely invalid. Reduce "
+            "MEM0_ADD_BATCH_SIZE or MEM0_ADD_MAX_MESSAGE_CHARS, lower MEM0_LLM_MAX_TOKENS, "
+            "or increase the vLLM --max-model-len. Set MEM0_ALLOW_RAW_FALLBACK_SMOKE=1 "
+            f"only for explicit raw-storage debugging. debug={result.debug!r}"
+        )
     print(
         "official_mem0 smoke ok: "
         f"records={len(result.records)} "
@@ -44,6 +57,13 @@ def main() -> int:
         f"mode={result.debug.get('official_mem0_add_mode', '')}"
     )
     return 0
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 if __name__ == "__main__":
