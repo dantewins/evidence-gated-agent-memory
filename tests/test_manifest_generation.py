@@ -15,6 +15,7 @@ class Args:
     cache_dir = ".cache/test"
     cases_output = "results/test_cases.jsonl"
     max_new_tokens = 32
+    context_window = 8192
     temperature = 0.0
     top_p = 1.0
     do_sample = False

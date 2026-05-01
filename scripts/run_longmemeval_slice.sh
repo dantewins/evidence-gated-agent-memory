@@ -26,6 +26,7 @@ DEVICE="${DEVICE:-cuda}"
 DTYPE="${DTYPE:-bfloat16}"
 INFERENCE_BATCH_SIZE="${INFERENCE_BATCH_SIZE:-12}"
 READER_FLUSH_SIZE="${READER_FLUSH_SIZE:-${INFERENCE_BATCH_SIZE}}"
+CONTEXT_WINDOW="${CONTEXT_WINDOW:-8192}"
 LONGMEMEVAL_INPUT="${LONGMEMEVAL_INPUT:-data/longmemeval_s_cleaned.json}"
 POLICIES="${POLICIES:-mem0 odv2_mem0_selective}"
 COMPILE_SLICE_REPORT="${COMPILE_SLICE_REPORT:-1}"
@@ -61,6 +62,7 @@ CASES_OUTPUT_PATH="${RESULT_DIR}/${RESULT_PREFIX}_${SAFE_SLICE_NAME}_cases.jsonl
   --device "${DEVICE}" \
   --dtype "${DTYPE}" \
   --inference-batch-size "${INFERENCE_BATCH_SIZE}" \
+  --context-window "${CONTEXT_WINDOW}" \
   --reader-flush-size "${READER_FLUSH_SIZE}" \
   "${POLICY_ARGS[@]}" \
   --category "${SLICE_NAME}" \

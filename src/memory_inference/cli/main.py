@@ -38,6 +38,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         parser.error("--reader-flush-size must be >= 0")
     if getattr(args, "inference_batch_size", 1) < 1:
         parser.error("--inference-batch-size must be >= 1")
+    if getattr(args, "context_window", 1) < 1:
+        parser.error("--context-window must be >= 1")
 
     if args.command == "preprocess-longmemeval":
         preprocess_longmemeval(args.input, args.output)
@@ -107,6 +109,7 @@ def build_reasoner(args: argparse.Namespace):
                 cache_dir=Path(args.cache_dir),
                 inference_batch_size=args.inference_batch_size,
                 max_new_tokens=args.max_new_tokens,
+                context_window=args.context_window,
                 temperature=args.temperature,
                 top_p=args.top_p,
                 do_sample=args.do_sample,
@@ -237,6 +240,7 @@ def manifest_config(args: argparse.Namespace, argv: Sequence[str] | None = None)
         "cache_dir": getattr(args, "cache_dir", ""),
         "cases_output": getattr(args, "cases_output", ""),
         "max_new_tokens": getattr(args, "max_new_tokens", None),
+        "context_window": getattr(args, "context_window", None),
         "temperature": getattr(args, "temperature", None),
         "top_p": getattr(args, "top_p", None),
         "do_sample": getattr(args, "do_sample", None),
@@ -308,6 +312,7 @@ def _add_benchmark_args(parser: argparse.ArgumentParser) -> None:
 def _add_local_model_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--inference-batch-size", type=int, default=8)
     parser.add_argument("--max-new-tokens", type=int, default=32)
+    parser.add_argument("--context-window", type=int, default=4096)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--top-p", type=float, default=1.0)
     parser.add_argument("--do-sample", action="store_true")

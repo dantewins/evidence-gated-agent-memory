@@ -98,6 +98,7 @@ MEM0_QUIET=true
 MEM0_REUSE_CLIENT=true
 INFERENCE_BATCH_SIZE=64
 READER_FLUSH_SIZE=64
+CONTEXT_WINDOW=8192
 PROGRESS=1
 RESULT_DIR=results/official_mem0_<utc-run-id>
 LOG_DIR=results/official_mem0_<utc-run-id>/logs
