@@ -83,6 +83,7 @@ Defaults:
 MEM0_LLM_PROVIDER=ollama
 MEM0_LLM_MODEL=llama3.1:8b
 MEM0_LLM_MAX_TOKENS=2000
+MEM0_VLLM_DISABLE_RESPONSE_FORMAT=false
 MEM0_EMBEDDER_PROVIDER=huggingface
 MEM0_EMBEDDER_MODEL=sentence-transformers/all-MiniLM-L6-v2
 MEM0_EMBEDDING_DIMS=384
@@ -116,11 +117,12 @@ If using vLLM instead of Ollama:
 MEM0_LLM_PROVIDER=vllm \
 MEM0_LLM_MODEL=Qwen/Qwen2.5-7B-Instruct \
 MEM0_LLM_MAX_TOKENS=512 \
+MEM0_VLLM_DISABLE_RESPONSE_FORMAT=true \
 VLLM_BASE_URL=http://localhost:8000/v1 \
 bash scripts/run_official_mem0_package.sh
 ```
 
-For vLLM, the runner queries `/v1/models` before the smoke test and rejects Mem0 add batches that are estimated to exceed the server context window. If you increase `MEM0_ADD_BATCH_SIZE`, either also lower `MEM0_ADD_MAX_MESSAGE_CHARS`/`MEM0_LLM_MAX_TOKENS` or start vLLM with a larger `--max-model-len`. Set `VLLM_MAX_MODEL_LEN` only if the server does not report `max_model_len`.
+For vLLM, the runner queries `/v1/models` before the smoke test and rejects Mem0 add batches that are estimated to exceed the server context window. If you increase `MEM0_ADD_BATCH_SIZE`, either also lower `MEM0_ADD_MAX_MESSAGE_CHARS`/`MEM0_LLM_MAX_TOKENS` or start vLLM with a larger `--max-model-len`. Set `VLLM_MAX_MODEL_LEN` only if the server does not report `max_model_len`. The local vLLM path disables OpenAI `response_format` by default because some vLLM/xgrammar combinations crash on JSON guided decoding; Mem0 still prompts for JSON and parses the returned text.
 
 Outputs:
 

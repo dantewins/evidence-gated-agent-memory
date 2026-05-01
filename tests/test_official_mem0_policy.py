@@ -1,4 +1,6 @@
 import importlib.util
+import sys
+import types
 from pathlib import Path
 import urllib.request
 
@@ -10,6 +12,7 @@ from memory_inference.memory.policies.official_mem0 import (
     OfficialMem0ODV2SelectivePolicy,
     OfficialMem0Policy,
     _normalize_mem0_results,
+    _patch_mem0_vllm_response_format_if_needed,
     official_mem0_local_config_from_env,
 )
 from tests.factories import make_query, make_record
@@ -288,6 +291,43 @@ def test_vllm_budget_preflight_rejects_env_server_context_mismatch(monkeypatch) 
 
     with pytest.raises(RuntimeError, match="context-window mismatch"):
         module._vllm_max_model_len_from_env_or_server()
+
+
+def test_mem0_vllm_patch_removes_response_format(monkeypatch) -> None:
+    class FakeVllmLLM:
+        def generate_response(
+            self,
+            messages,
+            response_format=None,
+            tools=None,
+            tool_choice="auto",
+            **kwargs,
+        ):
+            return {
+                "messages": messages,
+                "response_format": response_format,
+                "tools": tools,
+                "tool_choice": tool_choice,
+                "kwargs": kwargs,
+            }
+
+    fake_mem0 = types.ModuleType("mem0")
+    fake_llms = types.ModuleType("mem0.llms")
+    fake_vllm = types.ModuleType("mem0.llms.vllm")
+    fake_vllm.VllmLLM = FakeVllmLLM
+    monkeypatch.setitem(sys.modules, "mem0", fake_mem0)
+    monkeypatch.setitem(sys.modules, "mem0.llms", fake_llms)
+    monkeypatch.setitem(sys.modules, "mem0.llms.vllm", fake_vllm)
+    monkeypatch.setenv("MEM0_VLLM_DISABLE_RESPONSE_FORMAT", "true")
+
+    _patch_mem0_vllm_response_format_if_needed({"llm": {"provider": "vllm"}})
+    response = FakeVllmLLM().generate_response(
+        [{"role": "user", "content": "Return JSON."}],
+        response_format={"type": "json_object"},
+    )
+
+    assert response["response_format"] is None
+    assert FakeVllmLLM._memory_inference_response_format_patch is True
 
 
 def test_normalize_mem0_results_does_not_turn_empty_wrappers_into_memories() -> None:

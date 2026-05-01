@@ -375,6 +375,7 @@ def _build_mem0_client(config: dict[str, Any] | None = None) -> Any:
         ) from exc
 
     effective_config = config or official_mem0_local_config_from_env()
+    _patch_mem0_vllm_response_format_if_needed(effective_config)
     reuse_client = _env_bool("MEM0_REUSE_CLIENT", True)
     cache_key = _mem0_config_cache_key(effective_config)
     if reuse_client and cache_key in _MEM0_CLIENT_CACHE:
@@ -389,6 +390,42 @@ def _build_mem0_client(config: dict[str, Any] | None = None) -> Any:
 
 def _mem0_config_cache_key(config: dict[str, Any]) -> str:
     return json.dumps(config, sort_keys=True, default=str)
+
+
+def _patch_mem0_vllm_response_format_if_needed(config: dict[str, Any]) -> None:
+    llm_config = config.get("llm", {})
+    if not isinstance(llm_config, dict) or llm_config.get("provider") != "vllm":
+        return
+    if not _env_bool("MEM0_VLLM_DISABLE_RESPONSE_FORMAT", True):
+        return
+    try:
+        from mem0.llms.vllm import VllmLLM
+    except ImportError:
+        return
+    if getattr(VllmLLM, "_memory_inference_response_format_patch", False):
+        return
+
+    original_generate_response = VllmLLM.generate_response
+
+    def generate_response_without_response_format(
+        self,
+        messages,
+        response_format=None,
+        tools=None,
+        tool_choice="auto",
+        **kwargs,
+    ):
+        return original_generate_response(
+            self,
+            messages,
+            response_format=None,
+            tools=tools,
+            tool_choice=tool_choice,
+            **kwargs,
+        )
+
+    VllmLLM.generate_response = generate_response_without_response_format
+    VllmLLM._memory_inference_response_format_patch = True
 
 
 @contextlib.contextmanager

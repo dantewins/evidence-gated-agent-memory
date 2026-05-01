@@ -257,6 +257,7 @@ def manifest_config(args: argparse.Namespace, argv: Sequence[str] | None = None)
             "llm_provider": os.getenv("MEM0_LLM_PROVIDER", ""),
             "llm_model": os.getenv("MEM0_LLM_MODEL", ""),
             "llm_max_tokens": os.getenv("MEM0_LLM_MAX_TOKENS", ""),
+            "vllm_disable_response_format": os.getenv("MEM0_VLLM_DISABLE_RESPONSE_FORMAT", ""),
             "embedder_provider": os.getenv("MEM0_EMBEDDER_PROVIDER", ""),
             "embedder_model": os.getenv("MEM0_EMBEDDER_MODEL", ""),
             "vector_store_provider": os.getenv("MEM0_VECTOR_STORE_PROVIDER", ""),
