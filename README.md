@@ -13,7 +13,7 @@ ODV2 maintains a small validity ledger over extracted memory state:
 - unresolved same-key conflicts
 - provenance links back to support text
 
-At query time, the conservative policy starts from the baseline retriever output and only filters context when the retrieved evidence makes the edit low-risk. The main policy does not inject ODV2-only evidence into the prompt.
+At query time, the conservative `guard` mode starts from the baseline retriever output and only filters context when the retrieved evidence makes the edit low-risk. The official runner uses `compact` mode for the token-spend experiment: when ODV2 has relevant current-state evidence, it replaces verbose Mem0 reader context with compact ODV2 state records and records the intervention in per-case diagnostics.
 
 ## Main Comparisons
 
@@ -97,6 +97,8 @@ MEM0_ALLOW_RAW_FALLBACK_SMOKE=0
 MEM0_REQUIRE_NONEMPTY=true
 MEM0_QUIET=true
 MEM0_REUSE_CLIENT=true
+OFFICIAL_MEM0_ODV2_GATE_MODE=compact
+OFFICIAL_MEM0_ODV2_COMPACT_TOP_K=5
 INFERENCE_BATCH_SIZE=64
 READER_FLUSH_SIZE=64
 CONTEXT_WINDOW=8192
@@ -110,6 +112,8 @@ OVERWRITE_RESULTS=0
 The official Mem0 runner starts with a smoke test. If Mem0 stores no searchable memory, or if it only succeeds by falling back to raw `infer=False` storage, the run fails instead of producing an invalid report. The raw fallback path is still available for explicit debugging, but official package runs set `MEM0_FAIL_ON_RAW_FALLBACK=true` by default. Loader warnings from Mem0 and SentenceTransformers are suppressed by default; set `MEM0_QUIET=false` if you need to debug provider initialization.
 
 The runner prints `runner starting`, `context started`, `context finished`, `case prepared`, `case finished`, `policy finished`, and `runner finished` progress lines. Per-case diagnostics are streamed to JSONL as cases finish, so interrupted runs leave partial case files. The run directory contains `logs/run.log`, `logs/run.err`, and diagnostic snapshots for the environment, git state, and GPU state. If the script exits nonzero, it writes `diagnostics/failure_report.txt`. Existing output files are not overwritten unless `OVERWRITE_RESULTS=1`. Reader calls are accumulated across contexts up to `READER_FLUSH_SIZE`, which keeps local Hugging Face inference better batched on large GPUs such as an H100. This does not parallelize Mem0 extraction itself; if `MEM0_ADD_INFER=true` with Ollama, extraction can still be the slow stage.
+
+For the official token-spend comparison, keep `OFFICIAL_MEM0_ODV2_GATE_MODE=compact`. Set it to `guard` only to reproduce the original conservative stale-value-only gate. After a validation slice, run `python scripts/analyze_official_mem0_token_savings.py <result-dir>` and check that `compact_rows` is nonzero and prompt/retrieved-context token deltas are meaningfully negative before starting a full run.
 
 If using vLLM instead of Ollama:
 

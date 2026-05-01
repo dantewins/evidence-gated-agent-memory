@@ -265,6 +265,8 @@ def manifest_config(args: argparse.Namespace, argv: Sequence[str] | None = None)
             "add_max_message_chars": os.getenv("MEM0_ADD_MAX_MESSAGE_CHARS", ""),
             "raw_fallback_on_empty": os.getenv("MEM0_RAW_FALLBACK_ON_EMPTY", ""),
             "fail_on_raw_fallback": os.getenv("MEM0_FAIL_ON_RAW_FALLBACK", ""),
+            "odv2_gate_mode": os.getenv("OFFICIAL_MEM0_ODV2_GATE_MODE", ""),
+            "odv2_compact_top_k": os.getenv("OFFICIAL_MEM0_ODV2_COMPACT_TOP_K", ""),
         },
     }
 

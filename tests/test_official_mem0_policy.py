@@ -148,6 +148,114 @@ def test_official_mem0_odv2_gate_removes_archived_value_when_current_is_present(
     assert result.debug["validity_removed"] == "1"
 
 
+def test_official_mem0_odv2_compact_mode_replaces_verbose_mem0_context() -> None:
+    client = FakeMem0Client(
+        search_results=[
+            {"id": "old", "memory": "Alice used to work at Google."},
+            {"id": "new", "memory": "Alice now works at Meta after a long transition."},
+        ]
+    )
+    policy = OfficialMem0ODV2SelectivePolicy(
+        client=client,
+        consolidator=MockConsolidator(),
+        user_id="u",
+        gate_mode="compact",
+    )
+    policy.ingest(
+        [
+            make_record(
+                entry_id="fact-google",
+                entity="Alice",
+                attribute="employer",
+                value="Google",
+                timestamp=1,
+                session_id="s",
+                metadata={"source_kind": "structured_fact", "memory_kind": "state"},
+            ),
+            make_record(
+                entry_id="fact-meta",
+                entity="Alice",
+                attribute="employer",
+                value="Meta",
+                timestamp=2,
+                session_id="s",
+                metadata={"source_kind": "structured_fact", "memory_kind": "state"},
+            ),
+        ]
+    )
+    policy.maybe_consolidate()
+
+    result = policy.retrieve_for_query(
+        make_query(
+            query_id="q",
+            entity="Alice",
+            attribute="employer",
+            question="Where does Alice work now?",
+            timestamp=3,
+            session_id="s",
+            query_mode=QueryMode.CURRENT_STATE,
+        )
+    )
+
+    assert [entry.value for entry in result.entries] == ["Meta"]
+    assert result.debug["retrieval_mode"] == "official_mem0_odv2_compact_current"
+    assert result.debug["official_mem0_odv2_gate_mode"] == "compact"
+    assert result.debug["official_mem0_odv2_base_records"] == "2"
+    assert result.debug["official_mem0_odv2_returned_records"] == "1"
+    assert result.debug["validity_removed"] == "1"
+    assert result.debug["validity_appended"] == "1"
+
+
+def test_official_mem0_odv2_compact_mode_ranks_multiple_current_values() -> None:
+    client = FakeMem0Client(search_results=[{"id": "generic", "memory": "Alice likes photography."}])
+    policy = OfficialMem0ODV2SelectivePolicy(
+        client=client,
+        consolidator=MockConsolidator(),
+        user_id="u",
+        gate_mode="compact",
+        compact_top_k=1,
+    )
+    policy.ingest(
+        [
+            make_record(
+                entry_id="photo",
+                entity="Alice",
+                attribute="preference",
+                value="Sony camera accessories",
+                timestamp=1,
+                session_id="s",
+                metadata={"source_kind": "structured_fact", "memory_kind": "state"},
+            ),
+            make_record(
+                entry_id="video",
+                entity="Alice",
+                attribute="preference",
+                value="Adobe Premiere Pro advanced video editing settings",
+                timestamp=2,
+                session_id="s",
+                metadata={"source_kind": "structured_fact", "memory_kind": "state"},
+            ),
+        ]
+    )
+    policy.maybe_consolidate()
+
+    result = policy.retrieve_for_query(
+        make_query(
+            query_id="q",
+            entity="Alice",
+            attribute="preference",
+            question="Can you recommend resources for video editing?",
+            timestamp=3,
+            session_id="s",
+            query_mode=QueryMode.CURRENT_STATE,
+        )
+    )
+
+    assert [entry.entry_id for entry in result.entries] == ["video"]
+    assert result.debug["retrieval_mode"] == "official_mem0_odv2_compact_current"
+    assert result.debug["support_compacted"] == "0"
+
+
 def test_official_mem0_odv2_gate_keeps_mem0_output_when_current_is_absent() -> None:
     client = FakeMem0Client(search_results=[{"id": "old", "memory": "Alice used to work at Google."}])
     policy = OfficialMem0ODV2SelectivePolicy(

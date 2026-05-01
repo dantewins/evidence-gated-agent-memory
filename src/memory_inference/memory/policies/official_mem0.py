@@ -18,6 +18,44 @@ from memory_inference.memory.policies.odv2 import ODV2Policy
 
 _DEFAULT_COLLECTION_NAME = f"official_mem0_{uuid.uuid4().hex}"
 _MEM0_CLIENT_CACHE: dict[str, Any] = {}
+_OFFICIAL_GATE_MODES = {"guard", "compact"}
+_TERM_RE = re.compile(r"[a-z0-9]+")
+_RANK_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "at",
+    "be",
+    "can",
+    "did",
+    "do",
+    "does",
+    "for",
+    "from",
+    "have",
+    "how",
+    "i",
+    "in",
+    "is",
+    "it",
+    "me",
+    "my",
+    "now",
+    "of",
+    "on",
+    "or",
+    "some",
+    "the",
+    "to",
+    "what",
+    "when",
+    "where",
+    "which",
+    "who",
+    "with",
+    "you",
+}
 
 
 class OfficialMem0Policy(BaseMemoryPolicy):
@@ -221,7 +259,14 @@ class OfficialMem0Policy(BaseMemoryPolicy):
 
 
 class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
-    """Official Mem0 retrieval with ODV2 as a conservative post-retrieval gate."""
+    """Official Mem0 retrieval with ODV2 as a post-retrieval gate.
+
+    The default ``guard`` mode preserves the original conservative behavior:
+    Mem0 remains the reader context unless ODV2 can remove a stale same-key
+    value. ``compact`` mode is intended for the official Mem0 token-spend
+    comparison: when ODV2 has relevant current-state evidence, it replaces the
+    verbose Mem0 reader context with compact ODV2 state records.
+    """
 
     def __init__(
         self,
@@ -232,8 +277,17 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
         config: dict[str, Any] | None = None,
         importance_threshold: float = 0.1,
         user_id: str | None = None,
+        gate_mode: str | None = None,
+        compact_top_k: int | None = None,
     ) -> None:
         super().__init__(name=name)
+        self.gate_mode = _official_gate_mode(gate_mode)
+        self.compact_top_k = max(
+            1,
+            compact_top_k
+            if compact_top_k is not None
+            else _env_int("OFFICIAL_MEM0_ODV2_COMPACT_TOP_K", 5),
+        )
         self.retriever = OfficialMem0Policy(
             name=f"{name}::official_mem0",
             client=client,
@@ -285,6 +339,23 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
 
         current_entries = self.validity.current_entries_for_query(query)
         archive_entries = self.validity.archive_entries_for_query(query)
+        if self.gate_mode == "compact":
+            compact_records = _compact_current_records_for_query(
+                query,
+                current_entries,
+                limit=min(top_k, self.compact_top_k),
+            )
+            if compact_records:
+                return self._bundle(
+                    compact_records,
+                    base=base,
+                    retrieval_mode="official_mem0_odv2_compact_current",
+                    removed_count=max(0, len(records) - len(compact_records)),
+                    appended_count=len(compact_records),
+                    support_compacted=max(0, len(records) - len(compact_records)),
+                    base_record_count=len(records),
+                )
+
         decisive_current = _decisive_current_entries(query, current_entries)
         if not decisive_current or not archive_entries:
             return self._bundle(records, base=base, retrieval_mode="official_mem0_odv2_passthrough")
@@ -306,6 +377,7 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
                 else "official_mem0_odv2_passthrough"
             ),
             removed_count=removed,
+            base_record_count=len(records),
         )
 
     def snapshot_size(self) -> int:
@@ -318,6 +390,9 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
         base: RetrievalBundle,
         retrieval_mode: str,
         removed_count: int = 0,
+        appended_count: int = 0,
+        support_compacted: int = 0,
+        base_record_count: int | None = None,
     ) -> RetrievalBundle:
         return RetrievalBundle(
             records=records,
@@ -326,9 +401,14 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
                 "policy": self.name,
                 "retrieval_mode": retrieval_mode,
                 "base_retrieval_mode": base.debug.get("retrieval_mode", ""),
+                "official_mem0_odv2_gate_mode": self.gate_mode,
+                "official_mem0_odv2_base_records": str(
+                    len(base.records) if base_record_count is None else base_record_count
+                ),
+                "official_mem0_odv2_returned_records": str(len(records)),
                 "validity_removed": str(removed_count),
-                "validity_appended": "0",
-                "support_compacted": "0",
+                "validity_appended": str(appended_count),
+                "support_compacted": str(support_compacted),
             },
         )
 
@@ -634,6 +714,29 @@ def _query_allows_official_mem0_gate(query: RuntimeQuery) -> bool:
     return query.attribute not in {"dialogue", "event"}
 
 
+def _compact_current_records_for_query(
+    query: RuntimeQuery,
+    current_entries: list[MemoryRecord],
+    *,
+    limit: int,
+) -> list[MemoryRecord]:
+    if not current_entries:
+        return []
+    decisive = _decisive_current_entries(query, current_entries)
+    if decisive:
+        return decisive[:1]
+
+    scored = [
+        (score, entry)
+        for entry in _dedupe_records_by_value(current_entries)
+        if (score := _current_record_query_score(query, entry)) > 0.0
+    ]
+    if not scored:
+        return []
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [entry for _, entry in scored[:limit]]
+
+
 def _decisive_current_entries(
     query: RuntimeQuery,
     current_entries: list[MemoryRecord],
@@ -645,6 +748,41 @@ def _decisive_current_entries(
         if len(current_values) != 1:
             return []
     return current_entries[:1]
+
+
+def _current_record_query_score(query: RuntimeQuery, entry: MemoryRecord) -> float:
+    query_terms = _rank_terms(query.question)
+    entry_terms = (
+        _rank_terms(entry.value)
+        | _rank_terms(entry.support_text)
+        | _rank_terms(entry.attribute.replace("_", " "))
+    )
+    overlap = len(query_terms & entry_terms)
+    if overlap <= 0:
+        return 0.0
+    status_bonus = 0.25 if entry.status.name in {"ACTIVE", "REINFORCED"} else 0.0
+    support_bonus = 0.2 if entry.support_text else 0.0
+    return float(overlap) + status_bonus + support_bonus + (entry.timestamp * 0.0001)
+
+
+def _rank_terms(text: str) -> set[str]:
+    return {
+        term
+        for term in _TERM_RE.findall(text.lower())
+        if term not in _RANK_STOPWORDS and len(term) > 1
+    }
+
+
+def _dedupe_records_by_value(records: Iterable[MemoryRecord]) -> list[MemoryRecord]:
+    deduped: list[MemoryRecord] = []
+    seen: set[tuple[str, str, str]] = set()
+    for record in records:
+        key = (record.entity, record.attribute, _normalize(record.value))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(record)
+    return deduped
 
 
 def _remove_archived_values_from_official_records(
@@ -692,6 +830,16 @@ def _official_records_contain_any(
 
 def _normalize(value: str) -> str:
     return " ".join(value.lower().split())
+
+
+def _official_gate_mode(value: str | None = None) -> str:
+    mode = (value or os.getenv("OFFICIAL_MEM0_ODV2_GATE_MODE", "guard")).strip().lower()
+    if mode not in _OFFICIAL_GATE_MODES:
+        allowed = ", ".join(sorted(_OFFICIAL_GATE_MODES))
+        raise ValueError(
+            f"Unknown OFFICIAL_MEM0_ODV2_GATE_MODE={mode!r}; expected one of: {allowed}"
+        )
+    return mode
 
 
 def _safe_collection_name(value: str) -> str:

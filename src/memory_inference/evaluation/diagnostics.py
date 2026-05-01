@@ -60,6 +60,18 @@ def evaluated_case_to_diagnostic_row(
         ),
         "official_mem0_add_batches": _debug_int(evaluated, "official_mem0_add_batches"),
         "official_mem0_add_messages": _debug_int(evaluated, "official_mem0_add_messages"),
+        "official_mem0_odv2_gate_mode": evaluated.retrieval_bundle.debug.get(
+            "official_mem0_odv2_gate_mode",
+            "",
+        ),
+        "official_mem0_odv2_base_records": _debug_int(
+            evaluated,
+            "official_mem0_odv2_base_records",
+        ),
+        "official_mem0_odv2_returned_records": _debug_int(
+            evaluated,
+            "official_mem0_odv2_returned_records",
+        ),
         "validity_removed": _debug_int(evaluated, "validity_removed"),
         "validity_appended": _debug_int(evaluated, "validity_appended"),
         "support_compacted": _debug_int(evaluated, "support_compacted"),
