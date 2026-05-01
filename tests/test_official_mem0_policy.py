@@ -1,5 +1,6 @@
 import importlib.util
 from pathlib import Path
+import urllib.request
 
 import pytest
 
@@ -266,6 +267,27 @@ def test_vllm_budget_preflight_accepts_safe_mem0_batches() -> None:
     )
 
     module.validate_budget(budget)
+
+
+def test_vllm_budget_preflight_rejects_env_server_context_mismatch(monkeypatch) -> None:
+    module = _load_budget_script()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self):
+            return b'{"data": [{"max_model_len": 8192}]}'
+
+    monkeypatch.setenv("VLLM_MAX_MODEL_LEN", "16384")
+    monkeypatch.setenv("VLLM_BASE_URL", "http://localhost:8000/v1")
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *args, **kwargs: FakeResponse())
+
+    with pytest.raises(RuntimeError, match="context-window mismatch"):
+        module._vllm_max_model_len_from_env_or_server()
 
 
 def test_normalize_mem0_results_does_not_turn_empty_wrappers_into_memories() -> None:

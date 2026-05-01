@@ -107,15 +107,14 @@ def validate_budget(budget: VLLMBudget) -> None:
 
 def _vllm_max_model_len_from_env_or_server() -> int:
     env_value = os.getenv("VLLM_MAX_MODEL_LEN")
-    if env_value:
-        return max(1, int(env_value))
-
     base_url = os.getenv("VLLM_BASE_URL", "http://localhost:8000/v1").rstrip("/")
     url = f"{base_url}/models"
     try:
         with urllib.request.urlopen(url, timeout=5) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+        if env_value:
+            return max(1, int(env_value))
         raise RuntimeError(
             "Official Mem0 vLLM preflight could not query the vLLM model endpoint. "
             f"Set VLLM_BASE_URL correctly or provide VLLM_MAX_MODEL_LEN. url={url!r}"
@@ -123,9 +122,18 @@ def _vllm_max_model_len_from_env_or_server() -> int:
 
     max_model_len = _extract_max_model_len(payload)
     if max_model_len is None:
+        if env_value:
+            return max(1, int(env_value))
         raise RuntimeError(
             "Official Mem0 vLLM preflight could not determine max_model_len from "
             f"{url!r}. Set VLLM_MAX_MODEL_LEN explicitly."
+        )
+    if env_value and int(env_value) != max_model_len:
+        raise RuntimeError(
+            "Official Mem0 vLLM preflight found a context-window mismatch: "
+            f"VLLM_MAX_MODEL_LEN={env_value}, but the live vLLM server reports "
+            f"max_model_len={max_model_len}. Restart vLLM with the intended "
+            "--max-model-len or remove the stale VLLM_MAX_MODEL_LEN override."
         )
     return max_model_len
 
