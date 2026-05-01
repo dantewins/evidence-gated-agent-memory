@@ -98,7 +98,7 @@ MEM0_REQUIRE_NONEMPTY=true
 MEM0_QUIET=true
 MEM0_REUSE_CLIENT=true
 OFFICIAL_MEM0_ODV2_GATE_MODE=compact
-OFFICIAL_MEM0_ODV2_COMPACT_TOP_K=5
+OFFICIAL_MEM0_ODV2_COMPACT_TOP_K=2
 INFERENCE_BATCH_SIZE=64
 READER_FLUSH_SIZE=64
 CONTEXT_WINDOW=8192
@@ -113,7 +113,7 @@ The official Mem0 runner starts with a smoke test. If Mem0 stores no searchable 
 
 The runner prints `runner starting`, `context started`, `context finished`, `case prepared`, `case finished`, `policy finished`, and `runner finished` progress lines. Per-case diagnostics are streamed to JSONL as cases finish, so interrupted runs leave partial case files. The run directory contains `logs/run.log`, `logs/run.err`, and diagnostic snapshots for the environment, git state, and GPU state. If the script exits nonzero, it writes `diagnostics/failure_report.txt`. Existing output files are not overwritten unless `OVERWRITE_RESULTS=1`. Reader calls are accumulated across contexts up to `READER_FLUSH_SIZE`, which keeps local Hugging Face inference better batched on large GPUs such as an H100. This does not parallelize Mem0 extraction itself; if `MEM0_ADD_INFER=true` with Ollama, extraction can still be the slow stage.
 
-For the official token-spend comparison, keep `OFFICIAL_MEM0_ODV2_GATE_MODE=compact`. Set it to `guard` only to reproduce the original conservative stale-value-only gate. After a validation slice, run `python scripts/analyze_official_mem0_token_savings.py <result-dir>` and check that `compact_rows` is nonzero and prompt/retrieved-context token deltas are meaningfully negative before starting a full run.
+For the official token-spend comparison, keep `OFFICIAL_MEM0_ODV2_GATE_MODE=compact`. In compact mode the ODV2 policy keeps Mem0's own ranked evidence, applies stale-value filtering when ODV2 has a safe signal, and caps the reader context to `OFFICIAL_MEM0_ODV2_COMPACT_TOP_K` records. Set the gate mode to `guard` only to reproduce the original conservative stale-value-only filter. After a validation slice, run `python scripts/analyze_official_mem0_token_savings.py <result-dir>` and check that `compact_rows` is nonzero, prompt/retrieved-context token deltas are meaningfully negative, and paired accuracy does not regress before starting a full run.
 
 If using vLLM instead of Ollama:
 

@@ -148,11 +148,12 @@ def test_official_mem0_odv2_gate_removes_archived_value_when_current_is_present(
     assert result.debug["validity_removed"] == "1"
 
 
-def test_official_mem0_odv2_compact_mode_replaces_verbose_mem0_context() -> None:
+def test_official_mem0_odv2_compact_mode_limits_mem0_context() -> None:
     client = FakeMem0Client(
         search_results=[
-            {"id": "old", "memory": "Alice used to work at Google."},
             {"id": "new", "memory": "Alice now works at Meta after a long transition."},
+            {"id": "support", "memory": "Alice mentioned the Meta role during a work update."},
+            {"id": "old", "memory": "Alice used to work at Google."},
         ]
     )
     policy = OfficialMem0ODV2SelectivePolicy(
@@ -163,19 +164,6 @@ def test_official_mem0_odv2_compact_mode_replaces_verbose_mem0_context() -> None
     )
     policy.ingest(
         [
-            make_record(
-                entry_id="fact-google",
-                entity="Alice",
-                attribute="employer",
-                value="Google",
-                timestamp=1,
-                session_id="s",
-                metadata={
-                    "source_kind": "structured_fact",
-                    "memory_kind": "state",
-                    "support_text": "Alice used to work at Google.",
-                },
-            ),
             make_record(
                 entry_id="fact-meta",
                 entity="Alice",
@@ -205,17 +193,24 @@ def test_official_mem0_odv2_compact_mode_replaces_verbose_mem0_context() -> None
         )
     )
 
-    assert [entry.value for entry in result.entries] == ["Meta", "Google"]
-    assert result.debug["retrieval_mode"] == "official_mem0_odv2_compact_current"
+    assert [entry.value for entry in result.entries] == [
+        "Alice now works at Meta after a long transition.",
+        "Alice mentioned the Meta role during a work update.",
+    ]
+    assert result.debug["retrieval_mode"] == "official_mem0_odv2_compact_base"
     assert result.debug["official_mem0_odv2_gate_mode"] == "compact"
-    assert result.debug["official_mem0_odv2_base_records"] == "2"
+    assert result.debug["official_mem0_odv2_base_records"] == "3"
     assert result.debug["official_mem0_odv2_returned_records"] == "2"
-    assert result.debug["validity_removed"] == "0"
-    assert result.debug["validity_appended"] == "2"
+    assert result.debug["support_compacted"] == "1"
 
 
-def test_official_mem0_odv2_compact_mode_ranks_multiple_current_values() -> None:
-    client = FakeMem0Client(search_results=[{"id": "generic", "memory": "Alice likes photography."}])
+def test_official_mem0_odv2_compact_mode_honors_compact_top_k() -> None:
+    client = FakeMem0Client(
+        search_results=[
+            {"id": "video", "memory": "Alice wants Adobe Premiere Pro resources."},
+            {"id": "photo", "memory": "Alice likes Sony camera accessories."},
+        ]
+    )
     policy = OfficialMem0ODV2SelectivePolicy(
         client=client,
         consolidator=MockConsolidator(),
@@ -259,9 +254,9 @@ def test_official_mem0_odv2_compact_mode_ranks_multiple_current_values() -> None
         )
     )
 
-    assert [entry.entry_id for entry in result.entries] == ["video"]
-    assert result.debug["retrieval_mode"] == "official_mem0_odv2_compact_current"
-    assert result.debug["support_compacted"] == "0"
+    assert [entry.value for entry in result.entries] == ["Alice wants Adobe Premiere Pro resources."]
+    assert result.debug["retrieval_mode"] == "official_mem0_odv2_compact_base"
+    assert result.debug["support_compacted"] == "1"
 
 
 def test_official_mem0_odv2_gate_keeps_mem0_output_when_current_is_absent() -> None:

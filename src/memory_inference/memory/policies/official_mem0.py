@@ -19,43 +19,6 @@ from memory_inference.memory.policies.odv2 import ODV2Policy
 _DEFAULT_COLLECTION_NAME = f"official_mem0_{uuid.uuid4().hex}"
 _MEM0_CLIENT_CACHE: dict[str, Any] = {}
 _OFFICIAL_GATE_MODES = {"guard", "compact"}
-_TERM_RE = re.compile(r"[a-z0-9]+")
-_RANK_STOPWORDS = {
-    "a",
-    "an",
-    "and",
-    "are",
-    "at",
-    "be",
-    "can",
-    "did",
-    "do",
-    "does",
-    "for",
-    "from",
-    "have",
-    "how",
-    "i",
-    "in",
-    "is",
-    "it",
-    "me",
-    "my",
-    "now",
-    "of",
-    "on",
-    "or",
-    "some",
-    "the",
-    "to",
-    "what",
-    "when",
-    "where",
-    "which",
-    "who",
-    "with",
-    "you",
-}
 
 
 class OfficialMem0Policy(BaseMemoryPolicy):
@@ -264,8 +227,8 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
     The default ``guard`` mode preserves the original conservative behavior:
     Mem0 remains the reader context unless ODV2 can remove a stale same-key
     value. ``compact`` mode is intended for the official Mem0 token-spend
-    comparison: when ODV2 has relevant current-state evidence, it replaces the
-    verbose Mem0 reader context with compact ODV2 state records.
+    comparison: it keeps Mem0's own ranking, applies the stale-value guard when
+    ODV2 has a safe signal, and caps the reader context to a small top-k.
     """
 
     def __init__(
@@ -286,7 +249,7 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
             1,
             compact_top_k
             if compact_top_k is not None
-            else _env_int("OFFICIAL_MEM0_ODV2_COMPACT_TOP_K", 5),
+            else _env_int("OFFICIAL_MEM0_ODV2_COMPACT_TOP_K", 2),
         )
         self.retriever = OfficialMem0Policy(
             name=f"{name}::official_mem0",
@@ -339,45 +302,43 @@ class OfficialMem0ODV2SelectivePolicy(BaseMemoryPolicy):
 
         current_entries = self.validity.current_entries_for_query(query)
         archive_entries = self.validity.archive_entries_for_query(query)
-        if self.gate_mode == "compact":
-            compact_records = _compact_records_for_query(
-                query,
-                current_entries,
-                self.validity.episodic_log,
-                limit=min(top_k, self.compact_top_k),
+        decisive_current = _decisive_current_entries(query, current_entries)
+        filtered = records
+        stale_removed = 0
+        if decisive_current and archive_entries and _official_records_contain_any(
+            records,
+            decisive_current,
+        ):
+            filtered, stale_removed = _remove_archived_values_from_official_records(
+                records,
+                query=query,
+                current_entries=decisive_current,
+                archive_entries=archive_entries,
             )
-            if compact_records:
+
+        if self.gate_mode == "compact":
+            compact_limit = min(top_k, self.compact_top_k)
+            compacted = filtered[:compact_limit]
+            compact_removed = max(0, len(filtered) - len(compacted))
+            if compact_removed:
                 return self._bundle(
-                    compact_records,
+                    compacted,
                     base=base,
-                    retrieval_mode="official_mem0_odv2_compact_current",
-                    removed_count=max(0, len(records) - len(compact_records)),
-                    appended_count=len(compact_records),
-                    support_compacted=max(0, len(records) - len(compact_records)),
+                    retrieval_mode="official_mem0_odv2_compact_base",
+                    removed_count=stale_removed,
+                    support_compacted=compact_removed,
                     base_record_count=len(records),
                 )
 
-        decisive_current = _decisive_current_entries(query, current_entries)
-        if not decisive_current or not archive_entries:
-            return self._bundle(records, base=base, retrieval_mode="official_mem0_odv2_passthrough")
-        if not _official_records_contain_any(records, decisive_current):
-            return self._bundle(records, base=base, retrieval_mode="official_mem0_odv2_passthrough")
-
-        filtered, removed = _remove_archived_values_from_official_records(
-            records,
-            query=query,
-            current_entries=decisive_current,
-            archive_entries=archive_entries,
-        )
         return self._bundle(
             filtered[:top_k],
             base=base,
             retrieval_mode=(
                 "official_mem0_odv2_guard"
-                if removed
+                if stale_removed
                 else "official_mem0_odv2_passthrough"
             ),
-            removed_count=removed,
+            removed_count=stale_removed,
             base_record_count=len(records),
         )
 
@@ -715,26 +676,6 @@ def _query_allows_official_mem0_gate(query: RuntimeQuery) -> bool:
     return query.attribute not in {"dialogue", "event"}
 
 
-def _compact_records_for_query(
-    query: RuntimeQuery,
-    current_entries: list[MemoryRecord],
-    episodic_log: list[MemoryRecord],
-    *,
-    limit: int,
-) -> list[MemoryRecord]:
-    decisive = _decisive_current_entries(query, current_entries)
-    ranked_candidates = _rank_compact_candidates(query, episodic_log)
-
-    records: list[MemoryRecord] = []
-    if decisive and _current_record_query_score(query, decisive[0]) >= 2.0:
-        records.extend(decisive[:1])
-    records.extend(entry for _, entry in ranked_candidates)
-    records = _dedupe_records_by_value(records)
-    if not records:
-        return []
-    return records[:limit]
-
-
 def _decisive_current_entries(
     query: RuntimeQuery,
     current_entries: list[MemoryRecord],
@@ -746,70 +687,6 @@ def _decisive_current_entries(
         if len(current_values) != 1:
             return []
     return current_entries[:1]
-
-
-def _current_record_query_score(query: RuntimeQuery, entry: MemoryRecord) -> float:
-    query_terms = _rank_terms(query.question)
-    entry_terms = (
-        _rank_terms(entry.value)
-        | _rank_terms(entry.support_text)
-        | _rank_terms(entry.attribute.replace("_", " "))
-    )
-    overlap = len(query_terms & entry_terms)
-    if overlap <= 0:
-        return 0.0
-    status_bonus = 0.25 if entry.status.name in {"ACTIVE", "REINFORCED"} else 0.0
-    support_bonus = 0.2 if entry.support_text else 0.0
-    return float(overlap) + status_bonus + support_bonus + (entry.timestamp * 0.0001)
-
-
-def _rank_compact_candidates(
-    query: RuntimeQuery,
-    records: Iterable[MemoryRecord],
-) -> list[tuple[float, MemoryRecord]]:
-    scored: list[tuple[float, MemoryRecord]] = []
-    for entry in records:
-        if not _record_matches_compact_query(entry, query):
-            continue
-        score = _current_record_query_score(query, entry)
-        if score < 2.0:
-            continue
-        scored.append((score, entry))
-    scored.sort(key=lambda item: item[0], reverse=True)
-    return scored
-
-
-def _record_matches_compact_query(record: MemoryRecord, query: RuntimeQuery) -> bool:
-    if query.entity not in {"conversation", "all"} and record.entity != query.entity:
-        return False
-    if record.attribute != query.attribute:
-        return False
-    if record.attribute in {"dialogue", "event"}:
-        return False
-    return record.source_kind == "structured_fact" or record.memory_kind in {"state", "event"}
-
-
-def _rank_terms(text: str) -> set[str]:
-    terms: set[str] = set()
-    for raw_term in _TERM_RE.findall(text.lower()):
-        if raw_term in _RANK_STOPWORDS or len(raw_term) <= 1:
-            continue
-        terms.add(raw_term)
-        if len(raw_term) > 3 and raw_term.endswith("s"):
-            terms.add(raw_term[:-1])
-    return terms
-
-
-def _dedupe_records_by_value(records: Iterable[MemoryRecord]) -> list[MemoryRecord]:
-    deduped: list[MemoryRecord] = []
-    seen: set[tuple[str, str, str]] = set()
-    for record in records:
-        key = (record.entity, record.attribute, _normalize(record.value))
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(record)
-    return deduped
 
 
 def _remove_archived_values_from_official_records(
