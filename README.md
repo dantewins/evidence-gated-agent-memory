@@ -1,59 +1,81 @@
 # Evidence-Gated Agent Memory
 
-This repository contains the experimental code for a research project on validity-aware memory for long-horizon LLM agents. The core question is whether a lightweight memory gate can sit on top of Mem0-style retrieval and remove stale or redundant context without changing the frozen reader model.
+This repository contains the code and diagnostics for a token-efficiency study of
+evidence-gated memory for frozen LLM agents. The current paper asks a narrow
+systems question: can a post-retrieval gate reduce the reader context passed by
+an open-source Mem0 pipeline while keeping answer behavior close enough to use
+accuracy as a guardrail?
 
-The current paper claim is intentionally narrow: ODV2 is not a replacement for Mem0 and is not presented as a broad benchmark-beating retriever. It is evaluated as a conservative post-retrieval filter that should preserve answer accuracy while reducing prompt context on validity-sensitive cases.
+The headline result is not an accuracy improvement. It is a cost-quality
+operating point. On a 311-question LongMemEval subset, ODV2 compact reduces
+reader tokens by 42.7% relative to official open-source Mem0 top-5 retrieval,
+while accuracy changes from 62/311 to 58/311. In cost-normalized terms, reader
+tokens per correct answer drop from 2,444 to 1,497.
+
+## Current Result
+
+Completed run:
+
+```text
+results/official_mem0_basecompact_full_20260502T072459Z
+```
+
+Main paired comparison:
+
+| Policy | Correct | Reader tokens | Delta tokens | Tokens/correct |
+| --- | ---: | ---: | ---: | ---: |
+| `official_mem0` | 62/311 | 151,558 | baseline | 2,444 |
+| `official_mem0_odv2_selective` | 58/311 | 86,838 | -42.7% | 1,497 |
+| `official_mem0_top2` | 54/311 | 86,002 | -43.3% | 1,593 |
+| `official_mem0_top3` | 60/311 | 110,058 | -27.4% | 1,834 |
+
+Additional checks produced for the paper:
+
+- Bootstrap CI for reader-token reduction: 41.9% to 43.4%.
+- Bootstrap CI for tokens-per-correct reduction: 28.6% to 47.1%.
+- Cache-free 64-case reader replay: ODV2 compact takes 37.1 ms/case versus 56.5 ms/case for Mem0 top-5, with both at 9/64 correct on that subset.
+- Oracle answer-session sanity check: 27/64 correct when the reader receives only LongMemEval sessions marked as containing the answer.
+- Mechanism attribution: savings are dominated by ranked evidence compaction, with 907 Mem0 records omitted and only 2 stale records removed by the state guard.
+
+Interpretation:
+
+- Supported claim: evidence-gated compaction reduces reader-token spend under a fixed OSS Mem0 setup.
+- Supported claim: ODV2 compact is a lower-cost Pareto operating point among measured policies with at least 58 correct answers.
+- Unsupported claim: ODV2 improves accuracy over full Mem0 top-5 retrieval.
+- Unsupported claim: this reproduces Mem0 platform benchmark accuracy.
 
 ## Method
 
-ODV2 maintains a small validity ledger over extracted memory state:
+`official_mem0_odv2_selective` is a post-retrieval wrapper around official
+open-source Mem0. It does not replace Mem0 retrieval and it does not inject
+ODV2-only evidence into the reader prompt.
 
-- current state
-- archived or superseded state
-- unresolved same-key conflicts
-- provenance links back to support text
+The current compact gate:
 
-At query time, the conservative `guard` mode starts from the baseline retriever output and only filters context when the retrieved evidence makes the edit low-risk. The official runner uses `compact` mode for the token-spend experiment: when ODV2 has relevant current-state evidence, it replaces verbose Mem0 reader context with compact ODV2 state records and records the intervention in per-case diagnostics.
+1. Starts from Mem0's top-5 ranked records.
+2. Removes a stale record only when a conservative current-state guard fires.
+3. Preserves Mem0 ranking.
+4. Caps the reader context to `OFFICIAL_MEM0_ODV2_COMPACT_TOP_K=2`.
 
-## Main Comparisons
-
-The reviewer-facing comparison is:
-
-```text
-official_mem0
-official_mem0_odv2_selective
-```
-
-The local ablation comparison is:
-
-```text
-mem0
-odv2_support_compact
-odv2_stale_guard
-odv2_mem0_selective
-odv2_mem0_aggressive
-```
-
-`odv2_mem0_aggressive` is a negative/control variant for measuring the cost of less conservative filtering. It should not be used as the headline method unless the results support it.
+The state guard is intentionally conservative. In the completed run, the guard
+fires rarely, so the result should be described as ranked evidence compaction
+with a state-aware guard, not as proof that validity reasoning drives the
+savings.
 
 ## Benchmarks
 
-The primary benchmark path is LongMemEval. The default official-Mem0 run covers these categories:
+The primary benchmark path is LongMemEval. The completed official-Mem0 run
+covers:
 
 - `knowledge-update`
 - `single-session-preference`
 - `multi-session`
 - `single-session-user`
 
-The compiler reports all paired cases plus predeclared diagnostic slices:
-
-- `Predeclared validity-sensitive union`
-- `Current-state same-key evidence retrieved`
-- `Gold-mismatched same-key state exposed`
-- `Same-key state conflict exposed`
-- `ODV2 intervened`
-
-The gold-mismatch fields are offline diagnostics for analysis. They are not runtime signals available to the memory policy.
+The experiment is a paired efficiency ablation under one constrained OSS Mem0
+setup and one local frozen reader. The reader is `Qwen/Qwen2.5-7B-Instruct`.
+The Mem0 extraction LLM is also `Qwen/Qwen2.5-7B-Instruct` served through vLLM
+for the final run.
 
 ## Setup
 
@@ -71,100 +93,143 @@ python -m pip install -e ".[local-hf]"
 
 ## Run Official Mem0 Comparison
 
-If using Ollama for Mem0 extraction:
+The main runner is:
 
 ```bash
 bash scripts/run_official_mem0_package.sh
 ```
 
-Defaults:
-
-```text
-MEM0_LLM_PROVIDER=ollama
-MEM0_LLM_MODEL=llama3.1:8b
-MEM0_LLM_MAX_TOKENS=2000
-MEM0_VLLM_DISABLE_RESPONSE_FORMAT=false
-MEM0_EMBEDDER_PROVIDER=huggingface
-MEM0_EMBEDDER_MODEL=sentence-transformers/all-MiniLM-L6-v2
-MEM0_EMBEDDING_DIMS=384
-MEM0_VECTOR_STORE_PROVIDER=qdrant
-MEM0_ADD_INFER=true
-MEM0_ADD_BATCH_SIZE=8
-MEM0_ADD_MAX_MESSAGE_CHARS=2000
-MEM0_RAW_FALLBACK_ON_EMPTY=true
-MEM0_FAIL_ON_RAW_FALLBACK=true
-MEM0_ALLOW_RAW_FALLBACK_SMOKE=0
-MEM0_REQUIRE_NONEMPTY=true
-MEM0_QUIET=true
-MEM0_REUSE_CLIENT=true
-OFFICIAL_MEM0_ODV2_GATE_MODE=compact
-OFFICIAL_MEM0_ODV2_COMPACT_TOP_K=2
-INFERENCE_BATCH_SIZE=64
-READER_FLUSH_SIZE=64
-CONTEXT_WINDOW=8192
-PROGRESS=1
-RESULT_DIR=results/official_mem0_<utc-run-id>
-LOG_DIR=results/official_mem0_<utc-run-id>/logs
-DIAGNOSTIC_DIR=results/official_mem0_<utc-run-id>/diagnostics
-OVERWRITE_RESULTS=0
-```
-
-The official Mem0 runner starts with a smoke test. If Mem0 stores no searchable memory, or if it only succeeds by falling back to raw `infer=False` storage, the run fails instead of producing an invalid report. The raw fallback path is still available for explicit debugging, but official package runs set `MEM0_FAIL_ON_RAW_FALLBACK=true` by default. Loader warnings from Mem0 and SentenceTransformers are suppressed by default; set `MEM0_QUIET=false` if you need to debug provider initialization.
-
-The runner prints `runner starting`, `context started`, `context finished`, `case prepared`, `case finished`, `policy finished`, and `runner finished` progress lines. Per-case diagnostics are streamed to JSONL as cases finish, so interrupted runs leave partial case files. The run directory contains `logs/run.log`, `logs/run.err`, and diagnostic snapshots for the environment, git state, and GPU state. If the script exits nonzero, it writes `diagnostics/failure_report.txt`. Existing output files are not overwritten unless `OVERWRITE_RESULTS=1`. Reader calls are accumulated across contexts up to `READER_FLUSH_SIZE`, which keeps local Hugging Face inference better batched on large GPUs such as an H100. This does not parallelize Mem0 extraction itself; if `MEM0_ADD_INFER=true` with Ollama, extraction can still be the slow stage.
-
-For the official token-spend comparison, keep `OFFICIAL_MEM0_ODV2_GATE_MODE=compact`. In compact mode the ODV2 policy keeps Mem0's own ranked evidence, applies stale-value filtering when ODV2 has a safe signal, and caps the reader context to `OFFICIAL_MEM0_ODV2_COMPACT_TOP_K` records. Set the gate mode to `guard` only to reproduce the original conservative stale-value-only filter. After a validation slice, run `python scripts/analyze_official_mem0_token_savings.py <result-dir>` and check that `compact_rows` is nonzero, prompt/retrieved-context token deltas are meaningfully negative, and paired accuracy does not regress before starting a full run.
-
-If using vLLM instead of Ollama:
+For the final vLLM-style run, use:
 
 ```bash
+RUN_ID=official_mem0_basecompact_full_$(date -u +%Y%m%dT%H%M%SZ) \
 MEM0_LLM_PROVIDER=vllm \
 MEM0_LLM_MODEL=Qwen/Qwen2.5-7B-Instruct \
 MEM0_LLM_MAX_TOKENS=512 \
 MEM0_VLLM_DISABLE_RESPONSE_FORMAT=true \
 VLLM_BASE_URL=http://localhost:8000/v1 \
+VLLM_MAX_MODEL_LEN=16384 \
+MEM0_ADD_BATCH_SIZE=16 \
+MEM0_ADD_MAX_MESSAGE_CHARS=2000 \
+OFFICIAL_MEM0_ODV2_GATE_MODE=compact \
+OFFICIAL_MEM0_ODV2_COMPACT_TOP_K=2 \
+READER_FLUSH_SIZE=8 \
+INFERENCE_BATCH_SIZE=64 \
+CONTEXT_WINDOW=8192 \
 bash scripts/run_official_mem0_package.sh
 ```
 
-For vLLM, the runner queries `/v1/models` before the smoke test and rejects Mem0 add batches that are estimated to exceed the server context window. If you increase `MEM0_ADD_BATCH_SIZE`, either also lower `MEM0_ADD_MAX_MESSAGE_CHARS`/`MEM0_LLM_MAX_TOKENS` or start vLLM with a larger `--max-model-len`. Set `VLLM_MAX_MODEL_LEN` only if the server does not report `max_model_len`. The local vLLM path disables OpenAI `response_format` by default because some vLLM/xgrammar combinations crash on JSON guided decoding; Mem0 still prompts for JSON and parses the returned text.
+The runner prints progress lines for runner start, context start/finish, case
+finish, policy finish, and runner finish. Per-case diagnostics are streamed to
+JSONL so interrupted runs leave usable partial files. The run directory contains
+logs, environment snapshots, git state, GPU diagnostics, and a failure report if
+the script exits nonzero.
 
-Outputs:
+Raw Mem0 fallback is disabled for official package runs. If Mem0 stores no
+searchable memories or only succeeds by falling back to raw `infer=False`
+storage, the smoke test fails rather than producing an invalid result.
 
-```text
-results/official_mem0_<utc-run-id>/official_mem0_summary.csv
-results/official_mem0_<utc-run-id>/official_mem0_audit.jsonl
-results/official_mem0_<utc-run-id>/official_mem0_longmemeval_*_cases.jsonl
-results/official_mem0_<utc-run-id>/longmemeval_input.sha256
-results/official_mem0_<utc-run-id>/logs/run.log
-results/official_mem0_<utc-run-id>/logs/run.err
-results/official_mem0_<utc-run-id>/diagnostics/*
-```
+## Analyze Results
 
-## Run Local Ablations
+Aggregate token savings and top-k comparisons:
 
 ```bash
-bash scripts/run_stronger_results_package.sh
+python scripts/analyze_official_mem0_token_savings.py \
+  results/official_mem0_basecompact_full_20260502T072459Z \
+  --extra-policy official_mem0_top1 \
+  --extra-policy official_mem0_top3 \
+  --extra-policy official_mem0_top4
 ```
 
-Outputs:
+Replay naive top-k reader baselines from existing Mem0 records:
+
+```bash
+for K in 1 2 3 4; do
+  python scripts/replay_official_mem0_topk.py \
+    results/official_mem0_basecompact_full_20260502T072459Z \
+    --output results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_top${K}_cases.jsonl \
+    --top-k "$K" \
+    --policy-name "official_mem0_top${K}" \
+    --model-id Qwen/Qwen2.5-7B-Instruct \
+    --device cuda \
+    --dtype bfloat16 \
+    --inference-batch-size 64 \
+    --context-window 8192 \
+    --overwrite
+done
+```
+
+Generate submission checks:
+
+```bash
+python scripts/prepare_official_mem0_submission_checks.py \
+  results/official_mem0_basecompact_full_20260502T072459Z \
+  --output-dir results/official_mem0_basecompact_full_20260502T072459Z/submission_checks
+```
+
+Run cache-free reader systems replay:
+
+```bash
+PYTHONPATH=src python scripts/benchmark_official_mem0_reader_cache_free.py \
+  results/official_mem0_basecompact_full_20260502T072459Z \
+  --output-dir results/official_mem0_basecompact_full_20260502T072459Z/submission_checks \
+  --limit 64 \
+  --inference-batch-size 16
+```
+
+Run oracle answer-session sanity replay:
+
+```bash
+PYTHONPATH=src python scripts/replay_longmemeval_answer_context.py \
+  results/official_mem0_basecompact_full_20260502T072459Z \
+  --longmemeval data/longmemeval_s_cleaned.json \
+  --output-dir results/official_mem0_basecompact_full_20260502T072459Z/submission_checks \
+  --limit 64
+```
+
+## Output Layout
+
+Official run outputs:
 
 ```text
-results/stronger_results_summary.csv
-results/stronger_results_audit.jsonl
-results/longmemeval_*_cases.jsonl
-results/longmemeval_input.sha256
+results/<run-id>/official_mem0_summary.csv
+results/<run-id>/official_mem0_audit.jsonl
+results/<run-id>/official_mem0_longmemeval_*_cases.jsonl
+results/<run-id>/official_mem0_top*_cases.jsonl
+results/<run-id>/longmemeval_input.sha256
+results/<run-id>/logs/run.log
+results/<run-id>/logs/run.err
+results/<run-id>/diagnostics/*
 ```
 
-## Result Interpretation
+Submission-check outputs:
 
-Use ODV2 as a positive result only when the paired comparison shows:
+```text
+results/<run-id>/submission_checks/policy_efficiency.csv
+results/<run-id>/submission_checks/paired_bootstrap_summary.csv
+results/<run-id>/submission_checks/manual_audit_sample.csv
+results/<run-id>/submission_checks/state_guard_isolation.csv
+results/<run-id>/submission_checks/cache_free_reader_systems.csv
+results/<run-id>/submission_checks/oracle_answer_context_summary.csv
+```
 
-- no or very few paired losses
-- non-negative accuracy difference
-- lower prompt-token usage, especially on intervention cases
-- auditable per-case JSONL evidence
+## What To Report
 
-Do not claim broad Mem0 superiority unless the official-Mem0 comparison supports it. The intended contribution is a precision-first validity gate for memory retrieval, not a universal long-memory retriever.
+Use the current result as a token-saving systems/work-in-progress paper:
+
+- Report reader-token reduction, retrieved-context reduction, and tokens per correct answer.
+- Treat accuracy as a guardrail.
+- Compare against naive top-k replay baselines.
+- Say explicitly that the mechanism is mostly compaction, not frequent stale-state deletion.
+- Do not compare the low absolute accuracy to Mem0 platform results.
+
+The most useful remaining validation is a manual audit of:
+
+```text
+results/<run-id>/submission_checks/manual_audit_sample.csv
+```
+
+That audit checks whether the local span-match scorer undercounts correctness.
 
 ## Tests
 
