@@ -203,6 +203,13 @@ def _session_text(session: Any) -> str:
         return session
     if not isinstance(session, list):
         return json.dumps(session, ensure_ascii=True)
+    answer_turns = [
+        turn
+        for turn in session
+        if isinstance(turn, dict) and bool(turn.get("has_answer"))
+    ]
+    if answer_turns:
+        session = answer_turns
     turns: list[str] = []
     for turn in session:
         if isinstance(turn, dict):
