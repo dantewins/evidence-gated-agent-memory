@@ -17,19 +17,19 @@
 \usepackage[capitalize,noabbrev]{cleveref}
 \usepackage{icml2026}
 
-\icmltitlerunning{Evidence-Gated Memory}
+\icmltitlerunning{Same-Evidence Reader-Budget Gating}
 
 \begin{document}
 
 \twocolumn[
-\icmltitle{Evidence-Gated Memory for Token-Efficient Frozen LLM Agents}
+\icmltitle{Same-Evidence Reader-Budget Gating for Token-Efficient Agent Memory}
 
 \begin{icmlauthorlist}
 \icmlauthor{Anonymous Authors}{anon}
 \end{icmlauthorlist}
 \icmlaffiliation{anon}{Anonymous Institution}
 \icmlcorrespondingauthor{Anonymous Authors}{anonymous@example.com}
-\icmlkeywords{evidence-gated memory, long-term memory, LLM agents, retrieval, token efficiency, efficient agents}
+\icmlkeywords{agent memory, long-term memory, LLM agents, retrieval, token efficiency, efficient agents}
 
 \vskip 0.3in
 ]
@@ -37,113 +37,70 @@
 \printAffiliationsAndNotice{}
 
 \begin{abstract}
-Long-horizon agents can spend many reader tokens on stale or redundant retrieved memories. We study \emph{evidence-gated memory}, a post-retrieval budget controller layered over the official open-source Mem0 package. On 311 LongMemEval questions, a compact ODV2 gate reduces reader tokens by 42.7\% while changing accuracy from 62/311 to 58/311, outperforming a same-budget top-2 replay at 54/311. A secondary stale-aware gate routes only revision/conflict-risk cases to a larger context and matches official Mem0's 62/311 correct count while still reducing reader tokens by 36.9\%. These results are a constrained token-savings ablation, not a reproduction of Mem0 platform accuracy or evidence that ODV2 improves answer quality.
+Long-horizon agents can spend many reader tokens on redundant retrieved memories. We study a same-evidence reader-budget gate for the official open-source Mem0 package: the memory backend retrieves five records, and a deterministic risk rule chooses whether the frozen reader receives one or three of those exact records. On 311 LongMemEval questions, this adaptive gate answers 61/311 cases versus 62/311 for Mem0 top-5, while reducing reader tokens by 37.0\% and retrieved context tokens by 53.3\%. By comparison, fixed top-1 saves more tokens but falls to 50/311, fixed top-2 reaches 54/311, and fixed top-3 reaches 60/311. These results support a constrained token-savings claim for budgeted reader context, not a reproduction of Mem0 platform accuracy or a claim that the memory backend improves answer quality.
 \end{abstract}
 
 \section{Introduction}
 
-Long-horizon agents increasingly depend on external memory to carry information across sessions, tools, and user interactions. Existing retrieval-centered systems are effective when the main challenge is recovering relevant evidence. They are less direct when the challenge is state maintenance: a user moves, changes a preference, corrects a prior statement, or reverts to an earlier value. In these cases, the memory layer may retrieve both the old and new versions of a fact, forcing a frozen reader to infer which value remains valid.
+Long-horizon agents increasingly depend on external memory to carry information across sessions, tools, and user interactions. Retrieval-centered memory systems are often evaluated by whether they recover useful evidence. A deployed frozen reader, however, also pays for every retrieved item it reads. Even when a memory backend retrieves relevant records, passing all of them to the reader can waste context on redundant, weakly relevant, or conflicting memories.
 
-This paper asks a narrower systems question: can an evidence-gated memory layer reduce the amount of context passed to a frozen reader while keeping answer behavior close to an existing memory backend? We keep the reader, prompt template, and decoding configuration fixed, and vary only whether an ODV2 evidence gate is placed after official open-source Mem0 retrieval. Our hypothesis is that token-efficient memory should be allowed to compact evidence, but only under conservative gates. A memory layer should avoid injecting replacement facts and should avoid suppressing evidence unless the retrieved records themselves make the edit low-risk.
+This paper asks a narrow systems question: under a fixed memory backend and frozen reader, how much of the retrieved evidence can be withheld before answer behavior changes? We keep the official open-source Mem0 package, reader model, prompt template, and decoding configuration fixed. The main intervention is not a new retriever. It is a same-evidence reader-budget gate that selects a smaller prefix of the exact Mem0 top-5 records already retrieved for the query.
 
-We evaluate this idea on LongMemEval~\cite{wu2025longmemeval}, a benchmark designed around long-term interactive memory. Our target method overlays a write-time evidence-state ledger on top of the official Mem0 OSS package~\cite{chhikara2025mem0}. Earlier broad pruning variants were too aggressive. The current policy is deliberately narrower: Mem0 remains the retrieval backbone, ODV2 never injects ODV2-only evidence into the reader prompt, and the compact gate primarily tests whether a small ranked subset of Mem0 evidence can preserve paired behavior while lowering token spend.
+We evaluate on LongMemEval~\cite{wu2025longmemeval}, a benchmark designed around long-term interactive memory, using the official Mem0 OSS package~\cite{chhikara2025mem0}. The completed run covers knowledge-update, single-session-preference, multi-session, and single-session-user, for 311 questions. Official Mem0 top-5 spends 151{,}558 reader tokens for 62 correct answers. A deterministic adaptive gate routes low-risk cases to top-1 evidence and high-risk cases to top-3 evidence using only revision markers and answer-like values in the Mem0 records. It spends 95{,}466 reader tokens for 61 correct answers. This is the central result: an exact same-evidence budget controller removes 37.0\% of reader tokens while changing the aggregate correct count by one case.
 
-The completed run covers knowledge-update, single-session-preference, multi-session, and single-session-user, for 311 paired questions. The compact gate reduces reader-token budget substantially in every category, with a final accuracy difference of $-4$ correct answers relative to official Mem0 OSS. The resulting budget tradeoff is large: official Mem0 spends 151{,}558 reader tokens for 62 correct answers, whereas the compact gate spends 86{,}838 reader tokens for 58 correct answers. We additionally replay official Mem0 with top-$k$ values from 1 through 4, producing naive truncation baselines that isolate whether the result is simply fewer retrieved records. Finally, a stale-aware route uses retrieved-record revision signals and conflicting answer-like values to back off from compact mode only on high-risk cases; this route spends 95{,}685 reader tokens and matches official Mem0's 62 correct answers. This framing is important: the result is not a benchmark-level Mem0 accuracy claim. It is a paired cost-reduction test under a constrained open-source Mem0 setup.
+We also report ODV2-based secondary diagnostics because they motivated the budget-gating question. These are useful engineering checks, but the headline claim is deliberately based on the same-evidence adaptive gate because it avoids retrieval-overlap confounds. The result is not a benchmark-level Mem0 accuracy claim. It is a paired cost-reduction test under a constrained open-source Mem0 setup, and it preserves paired answer behavior rather than establishing high task quality: 244/311 cases are wrong for both top-5 and adaptive.
 
 \paragraph{Contributions.}
-We make three contributions. First, we define a conservative post-retrieval evidence-gating interface that layers current/archive/conflict state over an existing memory backend without replacing its ranked retrieval. Second, we instantiate the interface for the official open-source Mem0 package using a compact top-$k$ gate, a stale-evidence guard, and an oracle-free stale-risk route. Third, we provide paired LongMemEval evidence showing large reader-context reductions, while explicitly treating accuracy as a guardrail and separating evidence-gated compaction from plain top-$k$ Mem0 replay baselines.
+We make three contributions. First, we define a same-evidence reader-budgeting interface that separates memory retrieval from the amount of retrieved evidence passed to a frozen reader. Second, we instantiate it for official Mem0 using a deterministic risk route over Mem0's own top-5 records. Third, we provide paired LongMemEval evidence showing large reader-context reductions, while explicitly treating accuracy as a guardrail and reporting fixed top-$k$, ODV2 compact, and ODV2-composed routes as secondary budget baselines.
 
 \section{Related Work}
 
 Retrieval-augmented generation shows that non-parametric memory can improve a frozen model by supplying external evidence~\cite{lewis2020rag}. Persistent-agent systems extend this idea to long-lived interaction. Generative Agents store observations and reflections~\cite{park2023generative}; MemGPT treats memory management as an operating-system-like problem~\cite{packer2023memgpt}; and Mem0 provides a scalable long-term memory substrate for production agents~\cite{chhikara2025mem0}. These systems make external memory a practical adaptation mechanism, but they do not fully separate evidence recall from evidence budgeting.
 
-Long-term memory benchmarks make that distinction important. LoCoMo evaluates very long-term conversational memory~\cite{maharana2024locomo}, and LongMemEval focuses on interactive assistant memory across sessions~\cite{wu2025longmemeval}. Many failures in these settings arise because evidence changes over time: a retrieved span can be relevant but stale. Our work treats revision, reversion, conflict, and current-state selection as first-class memory operations.
+Long-term memory benchmarks make that distinction important. LoCoMo evaluates very long-term conversational memory~\cite{maharana2024locomo}, and LongMemEval focuses on interactive assistant memory across sessions~\cite{wu2025longmemeval}. Many failures in these settings arise because evidence changes over time or because multiple retrieved memories are only partially relevant. Our work treats revision and conflicting answer values as routing signals for reader-budget control, rather than claiming to solve memory consolidation.
 
 This design is related to belief revision~\cite{alchourron1985logic}, but implemented as an engineering layer for LLM agents rather than a symbolic knowledge base. It is also aligned with efficient adaptation. Parameter-efficient tuning and continual-learning methods adapt model weights~\cite{hu2022lora,wang2024comprehensive}, whereas memory-state updates can be cheaper when the change is user-specific or short-lived. This is consistent with Green AI arguments for preferring lower-cost mechanisms when quality is preserved~\cite{strubell2019energy,schwartz2020green}.
 
 \section{Method}
 
-\subsection{Memory State}
+\subsection{Same-Evidence Reader-Budget Gate}
 
-Each memory record contains an entity, attribute, value, timestamp, scope, provenance fields, and an evidence status. The status is one of \{\textsc{Active}, \textsc{Reinforced}, \textsc{Superseded}, \textsc{Conflicted}, \textsc{Archived}\}. The memory system maintains four stores: an append-only episodic log, a current-state store keyed by $(\textit{entity}, \textit{attribute})$, an archive of superseded or low-confidence entries, and a conflict table for unresolved same-key contradictions.
-
-Incoming structured facts are classified into revision operations: \textsc{Add}, \textsc{Reinforce}, \textsc{Revise}, \textsc{Revert}, \textsc{Split\_Scope}, \textsc{Conflict\_Unresolved}, \textsc{Low\_Confidence}, or \textsc{No\_Op}. A revision moves the previous active value into the archive and installs the new value in current state. A reversion does the same, but records that the new value was previously observed. Conflicts are not silently resolved; they are held in the conflict table.
-
-\begin{figure}[t]
-\centering
-\resizebox{0.96\columnwidth}{!}{%
-\begin{tikzpicture}[
-    >=Stealth,
-    box/.style={rectangle, draw, rounded corners=3pt, minimum height=0.8cm,
-                font=\footnotesize, align=center, inner sep=4pt, line width=0.8pt},
-    ingest/.style={box, fill=blue!10, draw=blue!55, text width=2.1cm},
-    classifier/.style={box, fill=green!12, draw=green!45!black, text width=2.1cm},
-    archive/.style={box, fill=orange!10, draw=orange!70!black, text width=1.5cm},
-    current/.style={box, fill=green!10, draw=green!45!black, text width=1.6cm},
-    conflict/.style={box, fill=red!8, draw=red!60!black, text width=1.6cm},
-    query/.style={box, fill=gray!12, draw=gray!60, text width=2.5cm},
-    reader/.style={box, fill=gray!20, draw=gray!70, text width=2.25cm},
-    arr/.style={->, line width=0.9pt, draw=gray!70}
-  ]
-  \node[ingest] (u) at (0,1.25) {Incoming updates};
-  \node[classifier] (c) at (0,0.2) {Revision classifier};
-  \node[archive] (a) at (-2.15,-0.95) {Archive};
-  \node[current] (s) at (0,-0.95) {Current state};
-  \node[conflict] (f) at (2.15,-0.95) {Conflict table};
-  \node[query] (p) at (0,-2.5) {Evidence-gated controller};
-  \node[reader] (r) at (0,-4.0) {Frozen reader};
-
-  \draw[arr, draw=blue!65] (u) -- (c);
-  \draw[arr, draw=blue!65] (c) -- (s);
-  \draw[arr, draw=blue!65] (c) -| (a);
-  \draw[arr, draw=blue!65] (c) -| (f);
-  \draw[arr] (s) -- (p);
-  \draw[arr] (a) |- (p);
-  \draw[arr] (f) |- (p);
-  \draw[arr, line width=1.15pt] (p) -- (r);
-\end{tikzpicture}
-}
-\caption{ODV2 maintains explicit evidence state at write time, but query-time edits are conservative and evidence-gated.}
-\label{fig:framework}
-\end{figure}
-
-\subsection{Official Mem0 Compact Gate}
-
-Let $B_5(q)$ be the top five records returned by official Mem0 OSS for query $q$. The compact ODV2 policy starts from this ranked Mem0 output and performs no independent retrieval into the reader prompt. ODV2 maintains its own current-state and archive stores while Mem0 ingests the same context, but query-time evidence remains anchored to Mem0. This choice keeps the comparison focused on whether an evidence gate can reduce the reader context without changing the underlying memory backend or answerer.
-
-\paragraph{Stale-state guard.}
-For current-state queries, ODV2 may remove a stale same-key record only if all of the following are true: (1) the current-state store contains a decisive value for the query key; (2) the current value is already present in $B_5(q)$; (3) the archive contains an older same-key value; and (4) the retrieved stale record matches that archived older value. This is intentionally asymmetric: ODV2 never injects evidence that Mem0 did not retrieve, and it never removes a stale value unless Mem0 has already retrieved the corresponding current value.
-
-\paragraph{Compact ranked context.}
-After the stale-state guard, the policy preserves Mem0's ranking and returns at most the first two remaining records to the reader. The compact policy can therefore be written as
+Let $B_5(q)=(r_1,\ldots,r_5)$ be the five records returned by official Mem0 OSS for query $q$. The reader-budget gate never changes this retrieved set and never injects records from another store. It only chooses how many of the ranked records to expose to the frozen reader. Fixed baselines are therefore
 \begin{equation}
-\begin{aligned}
-B'(q) = \operatorname{top}_2(&B_5(q) \setminus \\
-&\{r : g(q, r, B_5(q), C(q), A(q)) = 1\}),
-\end{aligned}
+B_k(q)=(r_1,\ldots,r_k),\quad k\in\{1,2,3,4,5\}.
 \end{equation}
-where $C(q)$ and $A(q)$ are the current and archive entries for $q$, and $g$ is true only when the observable gates above certify archived stale state. This differs from broad state pruning and from ODV2-first retrieval. The controller is designed for low-cost filtering over Mem0's own evidence, not for maximizing standalone recall.
 
-\paragraph{Stale-aware budget route.}
-We also evaluate an oracle-free adaptive route that uses the already retrieved Mem0 records to decide when compact mode is too risky. Over the first three Mem0 records, the route counts revision markers such as \emph{currently}, \emph{recently}, \emph{changed}, \emph{updated}, and \emph{used to}, and extracts answer-like numeric, time, money, and duration values. If at least three revision markers or at least two distinct answer-like values appear, the query is treated as high-risk and routed to the top-3 reader replay; otherwise it uses the compact ODV2 replay. The route does not inspect the gold answer or the reader prediction. It is a budget controller over previously generated reader replays, intended to test whether stale/conflict risk can recover the accuracy guardrail without returning to full top-5 context.
+The adaptive gate uses a deterministic risk rule over Mem0's own retrieved text. From the first four records, it counts revision markers such as \emph{currently}, \emph{recently}, \emph{changed}, \emph{updated}, and \emph{used to}. It also extracts answer-like values with a numeric regex that covers money, times, percentages, durations, distances, and other digit-bearing values. The route is high-risk if at least one revision marker is present or at least two distinct answer-like values are present. High-risk queries use $B_3(q)$; all other queries use $B_1(q)$:
+\begin{equation}
+B_{\textsc{adapt}}(q)=
+\begin{cases}
+B_3(q), & h(B_5(q))=1,\\
+B_1(q), & h(B_5(q))=0.
+\end{cases}
+\end{equation}
+This route uses no gold labels, predictions, category labels, or ODV2 records. It is a conservative reader-budget controller over a fixed retrieved evidence set.
+
+\subsection{Secondary ODV2 Operating Points}
+
+We also report two ODV2 diagnostics because they motivated the budget-gating question. The compact ODV2 wrapper uses the same OSS Mem0 package and local reader, returns at most two records, and applies a conservative stale-state guard. The guard fires rarely in the completed run. Artifact inspection also shows that ODV2's returned records are not always a subset of the corresponding official Mem0 top-5 records. We therefore treat ODV2 compact and the ODV2/top-3 composed route as secondary operating points, not as the causal basis for the same-evidence claim.
 
 \section{Evaluation}
 
-We evaluate on LongMemEval~\cite{wu2025longmemeval}. The baseline is \texttt{official\_mem0}, an adapter around the official open-source Mem0 package. The comparison policy is \texttt{official\_mem0\_odv2\_selective} in compact gate mode with compact top-$k=2$. The baseline retrieves five Mem0 records per query; the compact gate returns at most two ranked Mem0 records after the conservative stale-state guard. To isolate whether the result is merely top-$k$ truncation, we also replay \texttt{official\_mem0} diagnostics through the same frozen reader using only the first $k \in \{1,2,3,4\}$ Mem0 records. We then compose \texttt{official\_mem0\_staleaware\_gate} from the ODV2 compact and top-3 replay outputs using only retrieved-record risk features. These replays do not rerun Mem0 extraction or ODV2 state maintenance. We report paired comparisons on four LongMemEval categories: knowledge-update ($N=78$), single-session-preference ($N=30$), multi-session ($N=133$), and single-session-user ($N=70$), for 311 total questions.
+We evaluate on LongMemEval~\cite{wu2025longmemeval}. The baseline is \texttt{official\_mem0}, an adapter around the official open-source Mem0 package. The baseline retrieves five Mem0 records per query and passes all five to the frozen reader. We replay the same saved Mem0 records through the same reader using only the first $k \in \{1,2,3,4\}$ records, then compose \texttt{official\_mem0\_same\_evidence\_adaptive} by routing each case to the already computed top-1 or top-3 replay. These same-evidence replays do not rerun Mem0 extraction, retrieval, or ODV2 state maintenance. We report paired comparisons on four LongMemEval categories: knowledge-update ($N=78$), single-session-preference ($N=30$), multi-session ($N=133$), and single-session-user ($N=70$), for 311 total questions.
 
 The Mem0 extraction LLM is \texttt{Qwen/Qwen2.5-7B-Instruct} served through vLLM with a 16k serving context, bfloat16 weights, add batch size 16, 2000 maximum message characters, and raw fallback disabled to avoid invalid empty-memory runs. The Mem0 embedder is \texttt{sentence-transformers/all-MiniLM-L6-v2} with local Qdrant storage. The frozen reader is also \texttt{Qwen/Qwen2.5-7B-Instruct}, evaluated with the repository local-Hugging Face backend, bfloat16 inference, inference batch size 64, reader flush size 8, and an 8192-token reader context window. Both policies use the same cleaned input file, \texttt{data/longmemeval\_s\_cleaned.json}, and the same reader prompt template.
 
-Primary metrics are prompt tokens, reader total tokens, retrieved context tokens, and retrieved item count. Accuracy, paired wins, and paired losses against \texttt{official\_mem0} are reported as guardrail metrics to show how much answer behavior changes under compaction. Pairing is by LongMemEval case id, so a win means the compact gate is correct where the baseline is incorrect, and a loss means the reverse. Accuracy uses a local span-match proxy rather than the official leaderboard protocol: normalized exact match or normalized span match after lowercasing, article removal, punctuation removal, and whitespace normalization. The results therefore should not be compared directly to Mem0 platform or leaderboard numbers, which use different Mem0 backends, larger retrieval depths, and different evaluation harnesses~\cite{mem0benchmarks2026}.
+Primary metrics are prompt tokens, reader total tokens, retrieved context tokens, and retrieved item count. Accuracy, paired wins, and paired losses against \texttt{official\_mem0} are reported as guardrail metrics to show how much answer behavior changes under budget reduction. Pairing is by LongMemEval case id, so a win means the budgeted policy is correct where the baseline is incorrect, and a loss means the reverse. Accuracy uses a local span-match proxy rather than the official leaderboard protocol: normalized exact match or normalized span match after lowercasing, article removal, punctuation removal, and whitespace normalization. The results therefore should not be compared directly to Mem0 platform or leaderboard numbers, which use different Mem0 backends, larger retrieval depths, and different evaluation harnesses~\cite{mem0benchmarks2026}.
 
-For systems sanity checking, we also run a cache-free reader-only replay on a deterministic 64-case subset shared by official Mem0, ODV2 compact, top-2, and top-3. This replay disables the response cache and reuses the already-retrieved records, so it measures frozen-reader wall-clock cost without rerunning Mem0 ingestion or extraction. Finally, we run an oracle answer-session replay on 64 cases by giving the reader only LongMemEval sessions marked as containing the answer. This is not a memory policy, but it tests whether the local reader and span scorer can solve cases when focused answer evidence is present.
+For secondary context, we also report \texttt{official\_mem0\_odv2\_selective}, a compact ODV2 wrapper around the same OSS Mem0 setup, and \texttt{official\_mem0\_staleaware\_gate}, a post-hoc composition of ODV2 compact and top-3 replay. These rows are not the basis of the same-evidence claim because ODV2 retrieval is not guaranteed to overlap exactly with the baseline top-5. For systems sanity checking, we run a cache-free reader-only replay on a deterministic 64-case subset shared by official Mem0, ODV2 compact, top-2, and top-3. This replay disables the response cache and reuses already-retrieved records, so it measures frozen-reader wall-clock cost without rerunning Mem0 ingestion or extraction. Finally, we run an oracle answer-session replay on 64 cases by giving the reader only LongMemEval sessions marked as containing the answer.
 
 \paragraph{Scope of the run.}
-The experiment is intended as an efficiency ablation under a constrained OSS Mem0 reader budget, not as a reproduction of the published Mem0 platform result. The relevant question is paired: given the same OSS Mem0 extraction run and the same frozen reader, how much context can the ODV2 gate remove before accuracy changes? This design makes token savings directly interpretable, but it also explains the low absolute accuracy observed in the current run.
+The experiment is intended as an efficiency ablation under a constrained OSS Mem0 reader budget, not as a reproduction of the published Mem0 platform result. The relevant question is paired: given the same OSS Mem0 extraction run and the same frozen reader, how much of the same retrieved context can be removed before accuracy changes? This design makes token savings directly interpretable, but it also explains the low absolute accuracy observed in the current run.
 
 \section{Results}
 
 \begin{table*}[t]
-\caption{LongMemEval results for the official Mem0 OSS compact-gate run. $\Delta$Prompt is ODV2 compact minus official Mem0. Wins are cases where ODV2 is correct and Mem0 is wrong; losses are the reverse. \texttt{Top2} is a replay of the same Mem0 retrieved records with only the first two records passed to the reader.}
+\caption{LongMemEval results for the exact same-evidence adaptive gate. $\Delta$Prompt is adaptive gate minus official Mem0 top-5. Wins are cases where the adaptive gate is correct and Mem0 top-5 is wrong; losses are the reverse. \texttt{Top2} is a fixed replay of the same Mem0 retrieved records with only the first two records passed to the reader.}
 \label{tab:aggregate_results}
 \vskip 0.15in
 \begin{center}
@@ -151,17 +108,17 @@ The experiment is intended as an efficiency ablation under a constrained OSS Mem
 \begin{sc}
 \begin{tabular}{lccccccc}
 \toprule
-Category & $N$ & Mem0 Acc & ODV2 Acc & Top2 Acc & $\Delta$Prompt & Win & Loss \\
+Category & $N$ & Mem0 Acc & Adaptive Acc & Top2 Acc & $\Delta$Prompt & Win & Loss \\
 \midrule
-Knowledge-update & 78 & 25/78 (.321) & 23/78 (.295) & 23/78 (.295) & $-45.00\%$ & 1 & 3 \\
+Knowledge-update & 78 & 25/78 (.321) & 25/78 (.321) & 23/78 (.295) & $-39.54\%$ & 1 & 1 \\
 \midrule
-Single-sess-pref & 30 & 0/30 (.000) & 0/30 (.000) & 0/30 (.000) & $-46.00\%$ & 0 & 0 \\
+Single-sess-pref & 30 & 0/30 (.000) & 1/30 (.033) & 0/30 (.000) & $-43.69\%$ & 1 & 0 \\
 \midrule
-Multi-session & 133 & 7/133 (.053) & 7/133 (.053) & 4/133 (.030) & $-44.65\%$ & 6 & 6 \\
+Multi-session & 133 & 7/133 (.053) & 7/133 (.053) & 4/133 (.030) & $-39.32\%$ & 2 & 2 \\
 \midrule
-Single-sess-user & 70 & 30/70 (.429) & 28/70 (.400) & 27/70 (.386) & $-43.86\%$ & 1 & 3 \\
+Single-sess-user & 70 & 30/70 (.429) & 28/70 (.400) & 27/70 (.386) & $-42.16\%$ & 1 & 3 \\
 \midrule
-Total & 311 & 62/311 (.199) & 58/311 (.186) & 54/311 (.174) & $-44.70\%$ & 8 & 12 \\
+Total & 311 & 62/311 (.199) & 61/311 (.196) & 54/311 (.174) & $-40.43\%$ & 5 & 6 \\
 \bottomrule
 \end{tabular}
 \end{sc}
@@ -171,23 +128,22 @@ Total & 311 & 62/311 (.199) & 58/311 (.186) & 54/311 (.174) & $-44.70\%$ & 8 & 1
 \end{table*}
 
 \begin{table*}[t]
-\caption{Efficiency and top-$k$ sensitivity over 311 paired cases. Reader-token changes are relative to official Mem0 top-5. Tokens per correct answer and correct answers per 100k reader tokens are cost-normalized utility metrics; they are not accuracy metrics.}
+\caption{Efficiency over the exact official Mem0 evidence frontier. Reader-token changes are relative to official Mem0 top-5. The adaptive row selects only between official Mem0 top-1 and top-3 replays.}
 \label{tab:token_budget}
 \vskip 0.15in
 \begin{center}
 \begin{tiny}
 \begin{sc}
-\begin{tabular}{lcccccc}
+\begin{tabular}{lccccc}
 \toprule
-Policy & Records & Correct & Reader tok. & $\Delta$ tok. & Tok./correct & Correct/100k \\
+Policy & Records & Correct & Reader tok. & $\Delta$ tok. & Tok./correct \\
 \midrule
-\texttt{official\_mem0\_top1} & 1 & 50/311 & 65{,}812 & $-56.58\%$ & 1{,}316 & 76.0 \\
-\texttt{official\_mem0\_top2} & 2 & 54/311 & 86{,}002 & $-43.25\%$ & 1{,}593 & 62.8 \\
-\texttt{official\_mem0\_odv2} & $\leq$2 & 58/311 & 86{,}838 & $-42.70\%$ & 1{,}497 & 66.8 \\
-\texttt{staleaware\_gate} & adaptive & 62/311 & 95{,}685 & $-36.87\%$ & 1{,}543 & 64.8 \\
-\texttt{official\_mem0\_top3} & 3 & 60/311 & 110{,}058 & $-27.38\%$ & 1{,}834 & 54.5 \\
-\texttt{official\_mem0\_top4} & 4 & 59/311 & 130{,}157 & $-14.12\%$ & 2{,}206 & 45.3 \\
-\texttt{official\_mem0} & 5 & 62/311 & 151{,}558 & --- & 2{,}444 & 40.9 \\
+\texttt{top1} & 1 & 50/311 & 65{,}812 & $-56.58\%$ & 1{,}316 \\
+\texttt{top2} & 2 & 54/311 & 86{,}002 & $-43.25\%$ & 1{,}593 \\
+\texttt{adaptive} & 1/3 & 61/311 & 95{,}466 & $-37.01\%$ & 1{,}565 \\
+\texttt{top3} & 3 & 60/311 & 110{,}058 & $-27.38\%$ & 1{,}834 \\
+\texttt{top4} & 4 & 59/311 & 130{,}157 & $-14.12\%$ & 2{,}206 \\
+\texttt{top5} & 5 & 62/311 & 151{,}558 & --- & 2{,}444 \\
 \bottomrule
 \end{tabular}
 \end{sc}
@@ -197,7 +153,7 @@ Policy & Records & Correct & Reader tok. & $\Delta$ tok. & Tok./correct & Correc
 \end{table*}
 
 \begin{table}[t]
-\caption{Mechanism attribution on the 311 paired ODV2 cases. The measured savings are dominated by ranked context compaction, not by frequent stale-state deletion.}
+\caption{Mechanism and evidence-overlap audit. The headline adaptive gate uses only official Mem0 top-$k$ replay rows; ODV2 rows are secondary because their returned records can differ from the baseline top-5.}
 \label{tab:mechanism_attribution}
 \vskip 0.15in
 \begin{center}
@@ -207,12 +163,13 @@ Policy & Records & Correct & Reader tok. & $\Delta$ tok. & Tok./correct & Correc
 \toprule
 Diagnostic & Count \\
 \midrule
-Paired ODV2 rows & 311 \\
-Compact-mode rows & 303 \\
-Non-compact rows & 8 \\
-Stale records removed by guard & 2 \\
-Mem0 ranked records omitted by compaction & 907 \\
-ODV2-only records appended & 0 \\
+Same-evidence adaptive rows & 311 \\
+Routes to Mem0 top-1 & 105 \\
+Routes to Mem0 top-3 & 206 \\
+Mem0 records omitted vs top-5 & 827 \\
+ODV2 rows with outside-top-5 record & 63 \\
+ODV2 records outside baseline top-5 & 111 \\
+Stale records removed by ODV2 guard & 2 \\
 \bottomrule
 \end{tabular}
 \end{sc}
@@ -222,45 +179,49 @@ ODV2-only records appended & 0 \\
 \end{table}
 
 \paragraph{Accuracy guardrail.}
-Across the 311 paired cases, official Mem0 OSS answers 62 cases correctly, while the ODV2 compact gate answers 58 correctly. The paired accuracy difference is therefore $-4$ cases, or $-1.3$ percentage points. There are 8 paired wins for ODV2 and 12 paired losses; 50 cases are correct for both methods and 241 are wrong for both. The largest absolute category is multi-session, where both methods are tied at 7/133, but single-session-user and knowledge-update each contribute a two-case deficit for ODV2. The stale-aware route changes the operating point: it routes 111 high-risk cases to top-3 and 200 low-risk cases to compact ODV2, yielding 62/311 correct with 8 wins and 8 losses relative to official Mem0.
+Across the 311 paired cases, official Mem0 OSS top-5 answers 62 cases correctly, while the same-evidence adaptive gate answers 61 correctly. The paired accuracy difference is therefore one case, or $-0.3$ percentage points. There are 5 paired wins for the adaptive gate and 6 paired losses; 56 cases are correct for both methods and 244 are wrong for both. The category-level pattern is also close: knowledge-update and multi-session are tied with the top-5 baseline, single-session-preference gains one case, and single-session-user loses two cases.
 
 \paragraph{Reader-budget reduction.}
-The token-savings signal is the central result. ODV2 compact reduces prompt tokens by 44.70\%, total reader tokens by 42.70\%, retrieved context tokens by 59.07\%, and retrieved items by 58.65\%. The stale-aware route reduces prompt tokens by 39.21\%, total reader tokens by 36.87\%, retrieved context tokens by 51.80\%, and retrieved items by 51.68\% while matching the official Mem0 aggregate correct count. The run logs show compact-mode behavior on 303 of 311 paired ODV2 rows, with two stale-value removals and 907 ranked Mem0 records omitted by compaction. Thus the present evidence supports evidence gating as a token-budget controller, not as an accuracy-improving retriever.
+The token-savings signal is the central result. The adaptive gate reduces prompt tokens by 40.43\%, total reader tokens by 37.01\%, retrieved context tokens by 53.32\%, and retrieved items by 53.35\%. This is a clean same-evidence result: all reader inputs are prefixes of the exact Mem0 top-5 records used by the baseline. The ODV2 compact row remains useful as a secondary operating point, reducing reader tokens by 42.70\%, but it is not the main causal evidence because 63/311 ODV2 rows contain at least one record outside the corresponding official Mem0 top-5.
 
 \paragraph{Cost-normalized utility.}
-Because the goal is token savings under an accuracy guardrail, the most direct utility view is reader tokens spent per correct answer. Official Mem0 top-5 spends 151{,}558 reader tokens for 62 correct answers, or 2{,}444 reader tokens per correct answer. ODV2 compact spends 86{,}838 reader tokens for 58 correct answers, or 1{,}497 tokens per correct answer. Equivalently, the top-5 baseline pays 64{,}720 additional reader tokens to recover four additional aggregate correct answers, a marginal cost of 16{,}180 reader tokens per extra correct answer. The stale-aware route spends 95{,}685 reader tokens for 62 correct answers, or 1{,}543 tokens per correct answer, saving 55{,}873 reader tokens without changing the aggregate correct count. Top-1 has the lowest token cost per correct answer but answers only 50 cases correctly; among operating points with at least 58 correct answers, ODV2 has the lowest token cost per correct answer, while the stale-aware route is the lowest-cost point matching the top-5 aggregate correct count.
+Because the goal is token savings under an accuracy guardrail, the most direct utility view is reader tokens spent per correct answer. Official Mem0 top-5 spends 151{,}558 reader tokens for 62 correct answers, or 2{,}444 reader tokens per correct answer. The same-evidence adaptive gate spends 95{,}466 reader tokens for 61 correct answers, or 1{,}565 tokens per correct answer. Equivalently, the top-5 baseline spends 56{,}092 additional reader tokens to recover one additional aggregate correct answer. Fixed top-1 has the lowest token cost per correct answer but answers only 50 cases correctly; fixed top-2 saves slightly more tokens than the adaptive gate but answers seven fewer cases correctly.
 
-A paired bootstrap over 20{,}000 case resamples gives a 95\% interval of 41.9--43.4\% for reader-token reduction and 28.6--47.1\% for tokens-per-correct reduction. The same bootstrap gives an accuracy-delta interval of $-4.18$ to $+1.61$ percentage points, reinforcing that accuracy should be treated as a guardrail rather than an improvement claim.
+A paired bootstrap over 20{,}000 case resamples gives a 95\% interval of 35.5--38.5\% for the adaptive reader-token reduction and 28.5--42.7\% for tokens-per-correct reduction. The same bootstrap gives an accuracy-delta interval of $-2.57$ to $+1.61$ percentage points. We do not claim statistical non-inferiority for any budgeted row. The same-evidence adaptive result should be read as an accuracy-guarded operating point, not as an accuracy improvement.
 
-\paragraph{Manual scorer audit.}
-We reviewed a 50-case audit sample, giving 100 policy-case judgments across official Mem0 and ODV2 compact. Manual review agrees with the automatic span scorer on 91/100 decisions. On this sample, manual review marks official Mem0 correct on 14/50 cases and ODV2 compact correct on 11/50 cases, compared with automatic counts of 13/50 and 9/50. The audit therefore supports the use of the automatic scorer as a guardrail for this paired efficiency study, but it does not change the main accuracy conclusion. One audited case comparing Hawaii and Tokyo accommodation costs illustrates the dominant failure mode: the original dataset contains the Maui resort and Tokyo hostel costs needed for the \$270 gold answer, but the retrieved reader evidence shown to both policies omits the Maui cost.
+\paragraph{Scorer sanity check.}
+We retain the 50-case manual audit from the original ODV2 comparison only as a scorer sanity check, not as evidence for the headline adaptive policy. Manual review agrees with the automatic span scorer on 91/100 decisions across official Mem0 and ODV2 compact. The audit supports using the local span scorer as a rough guardrail, but the adaptive result should be judged from paired automatic counts and the bootstrap interval above.
 
 \begin{table}[t]
-\caption{Qualitative cases illustrating the tradeoff. Evidence snippets are shortened from retrieved records.}
-\label{tab:qualitative}
+\caption{Sensitivity of the same-evidence adaptive rule. The default route uses candidate-$k=4$, revision threshold 1, and distinct-value threshold 2. All rows select only between official Mem0 top-1 and top-3 reader replays.}
+\label{tab:adaptive_sensitivity}
 \vskip 0.1in
 \begin{center}
-\begin{scriptsize}
-\begin{tabular}{@{}p{0.22\columnwidth}p{0.35\columnwidth}p{0.31\columnwidth}@{}}
+\begin{tiny}
+\begin{tabular}{@{}lcccc@{}}
 \toprule
-Pattern & Retained evidence & Outcome \\
+Setting & Route 1/3 & Correct & Reader tok. & $\Delta$ \\
 \midrule
-ODV2 $>$ top2 & Mortgage pre-approval was \$350k; house sale was \$325k. & ODV2 answers \$25k; top2 answers \$350k. \\
+Default & 105/206 & 61/311 & 95{,}466 & $-37.01\%$ \\
 \midrule
-ODV2 loss & Crash Course evidence includes a stale 12-video count; the third Mem0 record recovers 15. & Mem0/top3 answer 15; ODV2/top2 answer 12. \\
+Less & 137/174 & 60/311 & 91{,}039 & $-39.93\%$ \\
 \midrule
-Top3 recovers & Guitar service evidence requires the Main St. shop detail. & Top3 gives the shop; compact prompts return a generic service statement. \\
+More & 87/224 & 61/311 & 97{,}962 & $-35.36\%$ \\
 \midrule
-All fail & Postcard evidence contains 17 and 8 additions; answer requires summing. & Methods return one component rather than 25. \\
+Value & 126/185 & 60/311 & 92{,}393 & $-39.04\%$ \\
+\midrule
+Broad & 70/241 & 61/311 & 100{,}415 & $-33.74\%$ \\
 \bottomrule
 \end{tabular}
-\end{scriptsize}
+\end{tiny}
 \end{center}
 \vskip -0.1in
 \end{table}
 
+All sensitivity rows are evaluated on the same completed run and should be read as robustness checks around the deterministic rule, not as evidence of pre-registered model selection.
+
 \paragraph{Top-$k$ attribution baselines.}
-\Cref{tab:token_budget,tab:mechanism_attribution} show that the dominant observed operation is ranked top-$k$ compaction. Plain top-1 replay saves the most tokens but drops to 50/311 correct. Plain top-2 replay nearly matches the ODV2 reader budget, using 86{,}002 total reader tokens rather than 86{,}838, but answers fewer cases correctly, 54/311 rather than 58/311. Plain top-3 replay recovers 60/311 correct answers, but pays 110{,}058 reader tokens. The stale-aware route sits between ODV2 and top-3 in cost, and is the only measured non-top-5 operating point that matches the official Mem0 aggregate correct count. The strongest defensible interpretation is therefore not that ODV2 uniquely causes all token savings; rather, evidence-gated memory provides a compacting interface with an adaptive backoff knob for stale or conflicting evidence.
+\Cref{tab:token_budget,tab:mechanism_attribution} show that fixed truncation alone is not the whole story. Plain top-1 replay saves the most tokens but drops to 50/311 correct. Plain top-2 uses 86{,}002 total reader tokens but answers only 54/311 cases correctly. Plain top-3 recovers 60/311 correct answers, but pays 110{,}058 reader tokens. The adaptive gate lies between top-2 and top-3 in cost, answers one more case than top-3, and uses 14{,}592 fewer reader tokens than top-3. This is the strongest causal evidence in the paper because the compared prompts differ only in how many official Mem0 records the reader sees.
 
 \paragraph{Absolute accuracy caveat.}
 The absolute accuracy values are low, especially in single-session-preference and multi-session. This is not hidden in the result tables because it directly affects how the paper should be read. The experiment is a paired efficiency ablation under one constrained OSS Mem0 setup and one local reader, not a claim that either method reaches published Mem0 platform accuracy. The oracle answer-session sanity check reaches 27/64 correct (42.2\%) on its 64-case sample, including 10/12 single-session-user cases, showing that the same reader and scorer can solve substantially more cases when focused answer evidence is supplied. The oracle result remains far from saturated, so it should be read only as a sanity check on evidence availability and scorer strictness.
@@ -296,42 +257,39 @@ coordinates {
     (130.157,19.0)
     (151.558,19.9)
 };
-\addplot[only marks, mark=star, mark size=3.1pt, draw=red!70!black, fill=red!45]
-coordinates {(86.838,18.6)};
-\addplot[only marks, mark=diamond*, mark size=2.9pt, draw=blue!65!black, fill=blue!35]
-coordinates {(95.685,19.9)};
+\addplot[only marks, mark=diamond*, mark size=3.0pt, draw=blue!65!black, fill=blue!35]
+coordinates {(95.466,19.6)};
 \node[font=\scriptsize, anchor=north, yshift=-1.2pt] at (axis cs:65.812,16.1) {top1};
 \node[font=\scriptsize, anchor=north, yshift=-1.2pt] at (axis cs:86.002,17.4) {top2};
-\node[font=\scriptsize, anchor=south west, xshift=1.0pt, yshift=1.0pt, text=red!70!black] at (axis cs:86.838,18.6) {ODV2};
-\node[font=\scriptsize, anchor=south east, xshift=-1.0pt, yshift=2.0pt, text=blue!65!black] at (axis cs:95.685,19.9) {stale gate};
+\node[font=\scriptsize, anchor=south east, xshift=-1.0pt, yshift=1.5pt, text=blue!65!black] at (axis cs:95.466,19.6) {adaptive};
 \node[font=\scriptsize, anchor=south, yshift=1.2pt] at (axis cs:110.058,19.3) {top3};
 \node[font=\scriptsize, anchor=south, yshift=1.2pt] at (axis cs:130.157,19.0) {top4};
 \node[font=\scriptsize, anchor=south, yshift=1.2pt] at (axis cs:151.558,19.9) {top5};
 \end{axis}
 \end{tikzpicture}
-\caption{Accuracy--cost tradeoff. ODV2 compact operates near the top-2 reader-token budget while recovering part of the accuracy lost by naive top-2 truncation; the stale-aware route spends more than compact ODV2 but matches the top-5 aggregate correct count at lower cost.}
+\caption{Accuracy--cost tradeoff for exact official Mem0 evidence only. The blue marker is the same-evidence adaptive gate; gray markers are fixed Mem0 top-$k$ replays.}
 \label{fig:token_reduction}
 \end{figure}
 
 \section{Discussion}
 
-The current results support a narrower decomposition of agent memory into evidence recall and reader-budget control. Official Mem0 OSS supplies the retrieved evidence, while evidence-gated memory decides how much of that ranked evidence is passed to the frozen reader. The compact gate substantially reduces the amount of text read by the answerer, while the stale-aware route shows that a small amount of risk-adaptive backoff can recover the aggregate accuracy guardrail. This distinction should remain central to the paper framing.
+The current results support a narrower decomposition of agent memory into evidence recall and reader-budget control. Official Mem0 OSS supplies the retrieved evidence, while the same-evidence gate decides how much of that ranked evidence is passed to the frozen reader. The adaptive route substantially reduces the amount of text read by the answerer while staying within one aggregate correct answer of the top-5 baseline. This distinction should remain central to the paper framing.
 
-This framing matters for scalable agent systems. If every memory query requires passing many retrieved facts to a reader, long-horizon systems inherit a growing prompt-cost burden even when the backend can retrieve relevant evidence. The reported run shows that a lightweight post-retrieval gate can remove approximately three-fifths of retrieved context tokens under a fixed open-source Mem0 setup. The small compact-mode accuracy drop should not be overinterpreted because absolute accuracy is near the floor in two categories. The current result is best used as a budgeted utility ablation: ODV2 compact reduces reader tokens per correct answer from 2{,}444 to 1{,}497, operates near the top-2 token budget, and recovers four correct answers relative to top-2. The stale-aware route is a different operating point: it reduces reader tokens per correct answer to 1{,}543 while preserving the official Mem0 aggregate correct count.
+This framing matters for scalable agent systems. If every memory query requires passing many retrieved facts to a reader, long-horizon systems inherit a growing prompt-cost burden even when the backend can retrieve relevant evidence. The reported run shows that a lightweight post-retrieval gate can remove over half of retrieved context tokens under a fixed open-source Mem0 setup. The adaptive gate is best used as a budgeted utility ablation: it reduces reader tokens per correct answer from 2{,}444 to 1{,}565, improves substantially over fixed top-1 and top-2 in accuracy, and uses fewer tokens than fixed top-3 while answering one more case correctly.
 
-The low absolute accuracy is also informative. It indicates that this run is not a reproduction of the published Mem0 platform benchmark configuration. In our setup, official Mem0 OSS retrieves five records and the compact gate returns two; the reader is a local Qwen-7B model scored by a strict local span-match proxy. Published Mem0 platform results use different infrastructure and much larger retrieval depths. The manual audit reinforces this interpretation: several wrong answers are better described as missing retrieved evidence than reader arithmetic failures. The proper comparison inside this paper is therefore paired and local: official Mem0 OSS versus the same Mem0 evidence after ODV2 compact gating.
+The low absolute accuracy is also informative. It indicates that this run is not a reproduction of the published Mem0 platform benchmark configuration. In our setup, official Mem0 OSS retrieves five records and the reader is a local Qwen-7B model scored by a strict local span-match proxy. Published Mem0 platform results use different infrastructure and much larger retrieval depths. The manual audit reinforces this interpretation: several wrong answers are better described as missing retrieved evidence than reader arithmetic failures. The proper comparison inside this paper is therefore paired and local: official Mem0 OSS top-5 versus smaller prefixes of the same retrieved Mem0 evidence.
 
 \section{Limitations}
 
-The main limitation is that the result does not show an accuracy improvement. Accuracy is not the target metric of the paper; it is a guardrail for the token-savings claim. We therefore do not claim that ODV2 beats Mem0, official Mem0, or the Mem0 platform on broad conversational QA. The defensible result is narrower: ODV2 compact is a lower-cost operating point that reduces reader tokens by 42.7\% and reader tokens per correct answer by 38.8\% relative to the top-5 official Mem0 baseline, while losing four aggregate correct answers. The stale-aware route matches the aggregate correct count with 36.9\% fewer reader tokens, but it is a replay-composition ablation and should be validated prospectively inside the runner.
+The main limitation is that the result does not show an accuracy improvement. Accuracy is not the target metric of the paper; it is a guardrail for the token-savings claim. We therefore do not claim that the adaptive gate beats Mem0, official Mem0, or the Mem0 platform on broad conversational QA. The defensible result is narrower: same-evidence adaptive gating is a lower-cost operating point that reduces reader tokens by 37.0\% and reader tokens per correct answer by 36.0\% relative to the top-5 official Mem0 baseline, while losing one aggregate correct answer.
 
 Second, the baseline is the official open-source Mem0 package under a constrained retrieval budget, not the Mem0 managed platform and not the published top-50 or top-200 benchmark setting. The low absolute accuracy should be reported rather than hidden, but it should not be interpreted as a claim about Mem0 platform quality. The top-$k$ replay study covers $k \le 5$ from the completed run, but a stronger version should compare top-10, top-50, and top-200 retrieval to separate retrieval recall failures from reader failures.
 
-Third, the compact gate currently uses a simple ranked top-two cap. This is useful for testing cost reduction, but it is not an optimized policy. The \texttt{official\_mem0\_top2} replay shows that much of the measured token reduction comes from truncation itself. The stale-aware route is a first query-adaptive ablation, but it still composes existing replay outputs rather than running as a single online policy. A more complete ablation should compare online query-adaptive gates, simple deduplication, stale-state suppression without compaction, and compaction without stale-state suppression. Fourth, token count is only one systems metric. It is a stable proxy for reader cost, but a deployment-grade SCALE systems result should add cache-free throughput, H100 memory, GPU utilization, energy, and wall-clock cost. Fifth, the revision classifier is deterministic and heuristic-based. Real deployments require learned or model-assisted consolidation for ambiguous updates, implicit corrections, and cross-modal evidence. Finally, the current experiments are text-only. The SCALE setting motivates multimodal agent memory, but this paper only tests the structured memory layer that a multimodal extraction system could feed.
+Third, the adaptive route is deterministic but not pre-registered; it should be validated prospectively in a fresh run. It also composes existing top-1 and top-3 replay outputs rather than measuring a single online controller with its own latency. A more complete ablation should compare online query-adaptive gates, simple deduplication, stale-state suppression without compaction, and compaction without stale-state suppression. Fourth, token count is only one systems metric. It is a stable proxy for reader cost, but a deployment-grade SCALE systems result should add cache-free adaptive throughput, H100 memory, GPU utilization, energy, and wall-clock cost. Finally, the current experiments are text-only. The SCALE setting motivates multimodal agent memory, but this paper only tests the text memory layer that a multimodal extraction system could feed.
 
 \section{Conclusion}
 
-ODV2 compact provides evidence that evidence-gated memory can substantially reduce the token budget of official Mem0 OSS retrieval. On 311 paired LongMemEval questions, it reduces reader total tokens by 42.7\% and retrieved context tokens by 59.1\%, while the accuracy guardrail changes from 19.9\% to 18.6\%. A naive \texttt{official\_mem0\_top2} replay reaches a similar token budget but lower accuracy, 17.4\%, while top-3 replay reaches 19.3\% at a larger budget. A stale-aware route matches the top-5 correct count at 36.9\% fewer reader tokens. The main contribution is not a universal retriever or a new benchmark-leading memory system. It is a conservative evidence gate that substantially reduces the evidence passed to a frozen reader and exposes lower-cost operating points within this constrained Mem0 OSS setup.
+Same-evidence adaptive gating provides evidence that agent memory systems can reduce frozen-reader token budgets without changing the memory backend. On 311 paired LongMemEval questions, the adaptive gate reduces reader total tokens by 37.0\% and retrieved context tokens by 53.3\%, while the accuracy guardrail changes from 19.9\% to 19.6\%. Fixed top-2 reaches a lower token budget but lower accuracy, 17.4\%, while fixed top-3 reaches 19.3\% at a larger budget. The main contribution is not a universal retriever or a new benchmark-leading memory system. It is a clean, same-evidence budget ablation showing that a frozen reader can often receive fewer retrieved memories while preserving most paired answer behavior in this constrained Mem0 OSS setup.
 
 \section*{LLM/Agent Usage Disclosure}
 
@@ -339,11 +297,11 @@ LLM-based coding and writing tools were used to assist with implementation and r
 
 \section*{Artifact Status}
 
-The submitted repository includes the official Mem0 package runner, top-$k$ replay, token analysis, submission-check generation, cache-free reader benchmarking, oracle answer-context replay, and per-case JSONL diagnostics. The active run directory is \path{results/official_mem0_basecompact_full_20260502T072459Z}. The four category files contain 622 original rows, corresponding to 311 paired \texttt{official\_mem0}/\texttt{official\_mem0\_odv2\_selective} cases; the replay files add top-$k$ diagnostic rows for $k \in \{1,2,3,4\}$. Submission-check outputs are saved under \path{submission_checks/}, including bootstrap intervals, the reviewed 50-case manual audit and summary, state-guard isolation rows, oracle answer-context rows, and cache-free reader-system traces. Full auditability requires the completed per-case JSONL outputs, the cleaned LongMemEval input checksum, model revision identifiers, vLLM server configuration, and run diagnostics.
+The submitted repository includes the official Mem0 package runner, top-$k$ replay, same-evidence adaptive composition, token analysis, submission-check generation, cache-free reader benchmarking, oracle answer-context replay, and per-case JSONL diagnostics. The active run directory is \path{results/official_mem0_basecompact_full_20260502T072459Z}. It contains the top-$k$ replay rows, adaptive rows, cleaned-input checksum, command logs, vLLM/server diagnostics, and GPU snapshots. Submission-check outputs include the reviewed 50-case manual audit, oracle answer-context rows, and cache-free reader-system traces.
 
 \section*{Reproducibility Commands}
 
-The paper tables are regenerated from per-case JSONL outputs using the repository scripts named above. The completed run stores the exact command logs, diagnostics, top-$k$ replays, bootstrap summaries, manual-audit sample, cache-free reader benchmark, and oracle answer-context replay under the active result directory.
+The adaptive rows are regenerated with \path{scripts/compose_official_mem0_same_evidence_adaptive.py}; the route uses candidate-$k=4$, revision-signal threshold 1, and distinct-value threshold 2. The paper tables are regenerated from per-case JSONL outputs using the repository scripts named above. The completed run stores command logs, diagnostics, top-$k$ replays, bootstrap summaries, manual-audit sample, cache-free reader benchmark, and oracle answer-context replay under the active result directory.
 
 \FloatBarrier
 \bibliographystyle{icml2026}

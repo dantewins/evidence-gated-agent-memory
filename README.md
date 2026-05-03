@@ -1,18 +1,16 @@
-# Evidence-Gated Agent Memory
+# Same-Evidence Reader-Budget Gating for Agent Memory
 
 This repository contains the code and diagnostics for a token-efficiency study of
-evidence-gated memory for frozen LLM agents. The current paper asks a narrow
-systems question: can a post-retrieval gate reduce the reader context passed by
-an open-source Mem0 pipeline while keeping answer behavior close enough to use
+reader-budget gating for frozen LLM agents. The current paper asks a narrow
+systems question: can we reduce the reader context passed by an open-source
+Mem0 pipeline while using the exact same retrieved evidence and treating
 accuracy as a guardrail?
 
 The headline result is not an accuracy improvement. It is a cost-quality
-operating point. On a 311-question LongMemEval subset, ODV2 compact reduces
-reader tokens by 42.7% relative to official open-source Mem0 top-5 retrieval,
-while accuracy changes from 62/311 to 58/311. A secondary stale-aware gate
-routes revision/conflict-risk cases to top-3 evidence and otherwise uses compact
-ODV2; it matches official Mem0 at 62/311 while still reducing reader tokens by
-36.9%.
+operating point. On a 311-question LongMemEval subset, the same-evidence
+adaptive gate routes official Mem0 top-5 evidence to either top-1 or top-3
+reader prompts. It uses only Mem0 record text, answers 61/311 cases versus
+62/311 for official Mem0 top-5, and reduces reader tokens by 37.0%.
 
 ## Current Result
 
@@ -27,52 +25,45 @@ Main paired comparison:
 | Policy | Correct | Reader tokens | Delta tokens | Tokens/correct |
 | --- | ---: | ---: | ---: | ---: |
 | `official_mem0` | 62/311 | 151,558 | baseline | 2,444 |
-| `official_mem0_odv2_selective` | 58/311 | 86,838 | -42.7% | 1,497 |
+| `official_mem0_same_evidence_adaptive` | 61/311 | 95,466 | -37.0% | 1,565 |
 | `official_mem0_top2` | 54/311 | 86,002 | -43.3% | 1,593 |
+| `official_mem0_odv2_selective` | 58/311 | 86,838 | -42.7% | 1,497 |
 | `official_mem0_staleaware_gate` | 62/311 | 95,685 | -36.9% | 1,543 |
 | `official_mem0_top3` | 60/311 | 110,058 | -27.4% | 1,834 |
 
 Additional checks produced for the paper:
 
-- Bootstrap CI for reader-token reduction: 41.9% to 43.4%.
-- Bootstrap CI for tokens-per-correct reduction: 28.6% to 47.1%.
+- Same-evidence adaptive route: 105 cases use top-1 evidence and 206 use top-3 evidence; wins/losses versus top-5 are 5/6.
+- Bootstrap CI for same-evidence adaptive reader-token reduction: 35.5% to 38.5%.
+- Bootstrap CI for same-evidence adaptive tokens-per-correct reduction: 28.5% to 42.7%.
 - Reviewed 50-case manual audit: automatic/manual agreement is 91/100 policy-case decisions; reviewed counts are 14/50 for official Mem0 and 11/50 for ODV2 compact.
 - Cache-free 64-case reader replay: ODV2 compact takes 37.1 ms/case versus 56.5 ms/case for Mem0 top-5, with both at 9/64 correct on that subset.
 - Oracle answer-session sanity check: 27/64 correct when the reader receives only LongMemEval sessions marked as containing the answer.
-- Mechanism attribution: savings are dominated by ranked evidence compaction, with 907 Mem0 records omitted and only 2 stale records removed by the state guard.
-- Stale-aware route: 111 high-risk cases use top-3 evidence and 200 low-risk cases use compact ODV2, matching official Mem0's aggregate correct count with 36.9% fewer reader tokens.
+- Evidence-overlap audit: ODV2 compact is secondary because 63/311 ODV2 rows include at least one record outside the corresponding official Mem0 top-5.
 
 Interpretation:
 
-- Supported claim: evidence-gated compaction reduces reader-token spend under a fixed OSS Mem0 setup.
-- Supported claim: ODV2 compact is a lower-cost Pareto operating point among measured policies with at least 58 correct answers.
-- Supported claim: an oracle-free stale-risk route can recover the official Mem0 aggregate correct count in this replay while still reducing reader tokens.
-- Unsupported claim: ODV2 improves accuracy over full Mem0 top-5 retrieval.
+- Supported claim: same-evidence adaptive reader-budget gating reduces reader-token spend under a fixed OSS Mem0 setup.
+- Supported claim: the adaptive gate is a lower-cost operating point than top-3 while preserving more accuracy than top-1/top-2.
+- Secondary diagnostic: ODV2 compact and ODV2/top-3 composition are useful operating points, but they are not the main causal evidence because their retrieved records can differ from the baseline top-5.
+- Unsupported claim: the adaptive gate improves accuracy over full Mem0 top-5 retrieval.
 - Unsupported claim: this reproduces Mem0 platform benchmark accuracy.
 
 ## Method
 
-`official_mem0_odv2_selective` is a post-retrieval wrapper around official
-open-source Mem0. It does not replace Mem0 retrieval and it does not inject
-ODV2-only evidence into the reader prompt.
+`official_mem0_same_evidence_adaptive` is composed from official Mem0 top-k
+reader replays. It does not rerun retrieval and it does not use ODV2 records,
+gold labels, predictions, or category labels.
 
-The current compact gate:
+The current adaptive gate:
 
-1. Starts from Mem0's top-5 ranked records.
-2. Removes a stale record only when a conservative current-state guard fires.
-3. Preserves Mem0 ranking.
-4. Caps the reader context to `OFFICIAL_MEM0_ODV2_COMPACT_TOP_K=2`.
+1. Starts from official Mem0's saved top-5 records.
+2. Computes risk features from the first four records.
+3. Uses top-3 if there is at least one revision marker or at least two distinct answer-like numeric/time/money/duration values.
+4. Uses top-1 otherwise.
 
-The state guard is intentionally conservative. In the completed run, the guard
-fires rarely, so the result should be described as ranked evidence compaction
-with a state-aware guard, not as proof that validity reasoning drives the
-savings.
-
-The stale-aware route is a replay-composition ablation. It uses only retrieved
-Mem0 record text, not gold labels or predictions: if the first three retrieved
-records contain at least three revision markers or at least two distinct
-answer-like numeric/time/money/duration values, the case uses the top-3 reader
-replay; otherwise it uses compact ODV2.
+`official_mem0_odv2_selective` and `official_mem0_staleaware_gate` remain in the
+repository as secondary diagnostics, not as the main same-evidence result.
 
 ## Benchmarks
 
@@ -148,10 +139,23 @@ Aggregate token savings and top-k comparisons:
 ```bash
 python scripts/analyze_official_mem0_token_savings.py \
   results/official_mem0_basecompact_full_20260502T072459Z \
+  --extra-policy official_mem0_same_evidence_adaptive \
   --extra-policy official_mem0_staleaware_gate \
   --extra-policy official_mem0_top1 \
   --extra-policy official_mem0_top3 \
   --extra-policy official_mem0_top4
+```
+
+Compose the same-evidence adaptive gate from existing official Mem0 top-k reader outputs:
+
+```bash
+python scripts/compose_official_mem0_same_evidence_adaptive.py \
+  results/official_mem0_basecompact_full_20260502T072459Z \
+  --output results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_same_evidence_adaptive_cases.jsonl \
+  --risk-candidate-k 4 \
+  --revision-signal-threshold 1 \
+  --distinct-value-threshold 2 \
+  --overwrite
 ```
 
 Compose the stale-aware gate from existing ODV2 and top-3 reader outputs:
@@ -218,6 +222,7 @@ results/<run-id>/official_mem0_summary.csv
 results/<run-id>/official_mem0_audit.jsonl
 results/<run-id>/official_mem0_longmemeval_*_cases.jsonl
 results/<run-id>/official_mem0_top*_cases.jsonl
+results/<run-id>/official_mem0_same_evidence_adaptive_cases.jsonl
 results/<run-id>/official_mem0_staleaware_gate_cases.jsonl
 results/<run-id>/longmemeval_input.sha256
 results/<run-id>/logs/run.log
@@ -245,7 +250,8 @@ Use the current result as a token-saving systems/work-in-progress paper:
 - Report reader-token reduction, retrieved-context reduction, and tokens per correct answer.
 - Treat accuracy as a guardrail.
 - Compare against naive top-k replay baselines.
-- Say explicitly that the mechanism is mostly compaction, not frequent stale-state deletion.
+- Say explicitly that the headline result is exact same-evidence reader-budgeting.
+- Keep ODV2/stale-aware rows as secondary diagnostics.
 - Do not compare the low absolute accuracy to Mem0 platform results.
 
 The reviewed manual audit is saved at:

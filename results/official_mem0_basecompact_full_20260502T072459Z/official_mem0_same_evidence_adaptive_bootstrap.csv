@@ -1,0 +1,6 @@
+comparison,metric,bootstrap_samples,ci_low_2.5,median,ci_high_97.5
+official_mem0_same_evidence_adaptive_minus_official_mem0,accuracy_delta_pct_points,20000,-2.5723,-0.3215,1.6077
+official_mem0_same_evidence_adaptive_minus_official_mem0,base_tokens_per_correct,20000,1991.6447,2451.7903,3142.5000
+official_mem0_same_evidence_adaptive_minus_official_mem0,reader_token_reduction_pct,20000,35.4835,36.9983,38.5377
+official_mem0_same_evidence_adaptive_minus_official_mem0,target_tokens_per_correct,20000,1275.3733,1572.4417,2008.3830
+official_mem0_same_evidence_adaptive_minus_official_mem0,tokens_per_correct_reduction_pct,20000,28.4895,35.9306,42.7345

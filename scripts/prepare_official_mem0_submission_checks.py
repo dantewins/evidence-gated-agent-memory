@@ -31,6 +31,7 @@ def main() -> int:
         "--extra-policy",
         action="append",
         default=[
+            "official_mem0_same_evidence_adaptive",
             "official_mem0_top1",
             "official_mem0_top2",
             "official_mem0_top3",
@@ -51,12 +52,16 @@ def main() -> int:
     by_key = _by_key(rows)
     policy_names = [TARGET_POLICY] + list(dict.fromkeys(args.extra_policy))
     efficiency_rows = _efficiency_rows(by_key, policy_names)
-    bootstrap_rows = _bootstrap_rows(
-        by_key,
-        TARGET_POLICY,
-        samples=max(1, args.bootstrap_samples),
-        seed=args.seed,
-    )
+    bootstrap_rows: list[dict[str, Any]] = []
+    for policy_name in policy_names:
+        bootstrap_rows.extend(
+            _bootstrap_rows(
+                by_key,
+                policy_name,
+                samples=max(1, args.bootstrap_samples),
+                seed=args.seed,
+            )
+        )
     audit_rows = _manual_audit_rows(by_key, args.audit_size)
     guard_rows = _state_guard_rows(by_key)
 

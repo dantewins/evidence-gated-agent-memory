@@ -1,0 +1,11 @@
+wrote results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_same_evidence_adaptive_cases.jsonl rows=311 policy=official_mem0_same_evidence_adaptive
+routes={'official_mem0_top1': 105, 'official_mem0_top3': 206}
+accuracy=61/311 (0.196) base=62/311
+wins_losses=wins=5 losses=6
+prompt_tokens=85602 base=143688 delta=-58086 delta_pct=-40.43%
+reader_total_tokens=95466 base=151558 delta=-56092 delta_pct=-37.01%
+by_category
+  knowledge-update: n=78 correct=25/78 base=25/78 reader_delta_pct=-36.26%
+  multi-session: n=133 correct=7/133 base=7/133 reader_delta_pct=-35.70%
+  single-session-preference: n=30 correct=1/30 base=0/30 reader_delta_pct=-41.02%
+  single-session-user: n=70 correct=28/70 base=30/70 reader_delta_pct=-38.64%

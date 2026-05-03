@@ -1,0 +1,6 @@
+setting,candidate_k,revision_threshold,value_threshold,top1_routes,top3_routes,correct,reader_tokens,reader_delta_pct,wins,losses
+default,4,1,2,105,206,61/311,95466,-37.01,5,6
+less-context,3,1,2,137,174,60/311,91039,-39.93,4,6
+more-context,5,1,2,87,224,61/311,97962,-35.36,5,6
+value-sensitive,4,3,1,126,185,60/311,92393,-39.04,5,7
+broad-risk,4,1,1,70,241,61/311,100415,-33.74,5,6
