@@ -294,12 +294,12 @@ coordinates {
 };
 \addplot[only marks, mark=star, mark size=3.1pt, draw=red!70!black, fill=red!45]
 coordinates {(86.838,18.6)};
-\node[font=\scriptsize, anchor=north] at (axis cs:65.812,16.1) {top1};
-\node[font=\scriptsize, anchor=north] at (axis cs:86.002,17.4) {top2};
-\node[font=\scriptsize, anchor=south west, text=red!70!black] at (axis cs:86.838,18.6) {ODV2};
-\node[font=\scriptsize, anchor=south] at (axis cs:110.058,19.3) {top3};
-\node[font=\scriptsize, anchor=south] at (axis cs:130.157,19.0) {top4};
-\node[font=\scriptsize, anchor=south] at (axis cs:151.558,19.9) {top5};
+\node[font=\scriptsize, anchor=north, yshift=-1.2pt] at (axis cs:65.812,16.1) {top1};
+\node[font=\scriptsize, anchor=north, yshift=-1.2pt] at (axis cs:86.002,17.4) {top2};
+\node[font=\scriptsize, anchor=south west, xshift=1.0pt, yshift=1.0pt, text=red!70!black] at (axis cs:86.838,18.6) {ODV2};
+\node[font=\scriptsize, anchor=south, yshift=1.2pt] at (axis cs:110.058,19.3) {top3};
+\node[font=\scriptsize, anchor=south, yshift=1.2pt] at (axis cs:130.157,19.0) {top4};
+\node[font=\scriptsize, anchor=south, yshift=1.2pt] at (axis cs:151.558,19.9) {top5};
 \end{axis}
 \end{tikzpicture}
 \caption{Accuracy--cost tradeoff. ODV2 compact is Pareto-efficient within the measured top-5 evidence budget: it operates near the top-2 reader-token budget while recovering part of the accuracy lost by naive top-2 truncation.}
