@@ -10,7 +10,8 @@ The headline result is not an accuracy improvement. It is a cost-quality
 operating point. On a 311-question LongMemEval subset, the same-evidence
 adaptive gate routes official Mem0 top-5 evidence to either top-1 or top-3
 reader prompts. It uses only Mem0 record text, answers 61/311 cases versus
-62/311 for official Mem0 top-5, and reduces reader tokens by 37.0%.
+62/311 for official Mem0 top-5, reduces reader tokens by 37.0%, and reduces
+reader-visible retrieved-context tokens by 53.3%.
 
 ## Current Result
 
@@ -26,6 +27,7 @@ Main paired comparison:
 | --- | ---: | ---: | ---: | ---: |
 | `official_mem0` | 62/311 | 151,558 | baseline | 2,444 |
 | `official_mem0_same_evidence_adaptive` | 61/311 | 95,466 | -37.0% | 1,565 |
+| `official_mem0_random_matched_top1_top3` | 56/311 | 95,230 | -37.2% | 1,701 |
 | `official_mem0_top2` | 54/311 | 86,002 | -43.3% | 1,593 |
 | `official_mem0_odv2_selective` | 58/311 | 86,838 | -42.7% | 1,497 |
 | `official_mem0_staleaware_gate` | 62/311 | 95,685 | -36.9% | 1,543 |
@@ -34,10 +36,11 @@ Main paired comparison:
 Additional checks produced for the paper:
 
 - Same-evidence adaptive route: 105 cases use top-1 evidence and 206 use top-3 evidence; automatic wins/losses versus top-5 are 5/6.
-- Author-confirmed adaptive guardrail audit: all 11 automatic top-5/adaptive disagreements are tied at 5/5, and the 31-case worksheet is tied at 17/17.
+- Author-confirmed adaptive guardrail audit: all 11 automatic top-5/adaptive disagreements are tied at 5/5, and the 31-case worksheet is tied at 17/17. This audit is limited and not blinded.
+- Matched-budget random top1/top3 control: seed 20260503 answers 56/311 at 95,230 reader tokens; across 10,000 random matched routes, the correct-count median is 57 and the 95% interval is 53 to 60.
 - Bootstrap CI for same-evidence adaptive reader-token reduction: 35.5% to 38.5%.
 - Bootstrap CI for same-evidence adaptive tokens-per-correct reduction: 28.5% to 42.7%.
-- Reviewed 50-case manual audit: automatic/manual agreement is 91/100 policy-case decisions; reviewed counts are 14/50 for official Mem0 and 11/50 for ODV2 compact.
+- Author-reviewed 50-case ODV2 scorer audit: automatic/manual agreement is 91/100 policy-case decisions; reviewed counts are 14/50 for official Mem0 and 11/50 for ODV2 compact. This older audit is secondary, limited, and not blinded.
 - Cache-free 64-case reader replay: same-evidence adaptive takes 37.2 ms/case and answers 10/64 versus 62.6 ms/case and 9/64 for Mem0 top-5; fixed top-1/top-2/top-3 take 26.2/33.4/39.6 ms/case.
 - Oracle answer-session sanity check: 27/64 correct when the reader receives only LongMemEval sessions marked as containing the answer.
 - Evidence-overlap audit: ODV2 compact is secondary because 63/311 ODV2 rows include at least one record outside the corresponding official Mem0 top-5.
@@ -62,6 +65,30 @@ The current adaptive gate:
 2. Computes risk features from the first four records.
 3. Uses top-3 if there is at least one revision marker or at least two distinct answer-like numeric/time/money/duration values.
 4. Uses top-1 otherwise.
+
+The exact route uses this marker set:
+
+```text
+now, currently, recently, new, changed, updated, revised, latest, moved,
+switched, instead, no longer, previously, formerly, used to, current
+```
+
+The exact answer-value regex is:
+
+```text
+(?:\$\s*)?\b\d+(?:[,:.]\d+)?(?:\s?(?:am|pm|kg|lb|lbs|%|percent|minutes?|hours?|days?|weeks?|months?|years?|miles?|km))?\b
+```
+
+Reader total tokens are Hugging Face tokenizer prompt tokens after chat-template
+rendering plus generated completion tokens. Reader-visible retrieved-context
+tokens are whitespace-token counts over the memory-record text passed to the
+reader; Mem0 still retrieves top-5 before the gate.
+
+Captured final-run metadata records Python 3.12.3, PyTorch 2.5.1+cu121, and
+Transformers 4.47.1 on Linux 6.11 with CUDA 12.2. The artifact does not include
+a full installed package freeze for every dependency; the repository lower
+bounds specify `mem0ai[nlp]>=0.1`, `qdrant-client>=1.9`, and
+`sentence-transformers>=3.0`.
 
 `official_mem0_odv2_selective` and `official_mem0_staleaware_gate` remain in the
 repository as secondary diagnostics, not as the main same-evidence result.
@@ -141,6 +168,7 @@ Aggregate token savings and top-k comparisons:
 python scripts/analyze_official_mem0_token_savings.py \
   results/official_mem0_basecompact_full_20260502T072459Z \
   --extra-policy official_mem0_same_evidence_adaptive \
+  --extra-policy official_mem0_random_matched_top1_top3 \
   --extra-policy official_mem0_staleaware_gate \
   --extra-policy official_mem0_top1 \
   --extra-policy official_mem0_top3 \
@@ -156,6 +184,19 @@ python scripts/compose_official_mem0_same_evidence_adaptive.py \
   --risk-candidate-k 4 \
   --revision-signal-threshold 1 \
   --distinct-value-threshold 2 \
+  --overwrite
+```
+
+Compose the matched-budget random top1/top3 control:
+
+```bash
+python scripts/compose_official_mem0_random_matched_route.py \
+  results/official_mem0_basecompact_full_20260502T072459Z \
+  --output results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_random_matched_top1_top3_cases.jsonl \
+  --summary results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_random_matched_top1_top3_summary.md \
+  --distribution results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_random_matched_top1_top3_distribution.csv \
+  --seed 20260503 \
+  --draws 10000 \
   --overwrite
 ```
 
@@ -227,6 +268,9 @@ results/<run-id>/official_mem0_audit.jsonl
 results/<run-id>/official_mem0_longmemeval_*_cases.jsonl
 results/<run-id>/official_mem0_top*_cases.jsonl
 results/<run-id>/official_mem0_same_evidence_adaptive_cases.jsonl
+results/<run-id>/official_mem0_random_matched_top1_top3_cases.jsonl
+results/<run-id>/official_mem0_random_matched_top1_top3_distribution.csv
+results/<run-id>/official_mem0_random_matched_top1_top3_summary.md
 results/<run-id>/official_mem0_staleaware_gate_cases.jsonl
 results/<run-id>/longmemeval_input.sha256
 results/<run-id>/logs/run.log
@@ -254,9 +298,10 @@ results/<run-id>/submission_checks/oracle_answer_context_summary.csv
 
 Use the current result as a token-saving memory-budget paper:
 
-- Report reader-token reduction, retrieved-context reduction, and tokens per correct answer.
+- Report reader-token reduction, reader-visible retrieved-context reduction, and tokens per correct answer.
 - Treat accuracy as a guardrail.
 - Compare against naive top-k replay baselines.
+- Compare against matched-budget random top1/top3 routing.
 - Say explicitly that the headline result is exact same-evidence reader-budgeting.
 - Keep ODV2/stale-aware rows as secondary diagnostics.
 - Do not compare the low absolute accuracy to Mem0 platform results.
@@ -270,7 +315,8 @@ results/<run-id>/submission_checks/adaptive_guardrail_review.csv
 It covers all 11 automatic disagreement cases between official Mem0 top-5 and
 the same-evidence adaptive policy, plus a deterministic 20-case agreement
 sample. Author-confirmed audit labels the 11 disagreement cases as tied at 5/5
-and the 31-case worksheet as tied at 17/17.
+and the 31-case worksheet as tied at 17/17. This audit is author-confirmed,
+limited, and not blinded.
 
 The older reviewed manual audit is saved at:
 
@@ -278,7 +324,7 @@ The older reviewed manual audit is saved at:
 results/<run-id>/submission_checks/manual_audit_sample_reviewed.csv
 ```
 
-That audit checks whether the local span-match scorer undercounts correctness.
+That secondary audit checks whether the local span-match scorer undercounts correctness.
 On the reviewed 50-case sample, manual review marks official Mem0 correct on
 14/50 cases and ODV2 compact correct on 11/50 cases, while the automatic scorer
 marks 13/50 and 9/50 respectively.

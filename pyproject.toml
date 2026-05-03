@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "memory-inference-research"
 version = "0.1.0"
-description = "Validity-aware external memory research for frozen long-horizon LLM agents"
+description = "Same-evidence reader-budget gating for token-efficient agent memory"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []

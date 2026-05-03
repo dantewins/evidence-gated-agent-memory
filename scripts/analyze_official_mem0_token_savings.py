@@ -40,7 +40,7 @@ def main() -> int:
         + int(row.get("completion_tokens") or 0),
     )
     _print_metric(
-        "retrieved_context_tokens",
+        "reader_visible_retrieved_context_tokens",
         pairs,
         lambda row: int(row.get("retrieved_context_tokens") or 0),
     )
@@ -153,7 +153,10 @@ def _print_extra_policy_comparison(rows: list[dict[str, Any]], policy_name: str)
             lambda row: int(row.get("prompt_tokens") or 0)
             + int(row.get("completion_tokens") or 0),
         ),
-        ("retrieved_context_tokens", lambda row: int(row.get("retrieved_context_tokens") or 0)),
+        (
+            "reader_visible_retrieved_context_tokens",
+            lambda row: int(row.get("retrieved_context_tokens") or 0),
+        ),
         ("retrieved_items", lambda row: int(row.get("retrieved_items") or 0)),
     ):
         base_total = sum(getter(base) for base, _ in pairs)

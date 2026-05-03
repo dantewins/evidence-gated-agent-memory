@@ -9,6 +9,11 @@ bootstrap_samples,ci_high_97.5,ci_low_2.5,comparison,median,metric
 20000,38.5655,35.4819,official_mem0_same_evidence_adaptive_minus_official_mem0,36.9965,reader_token_reduction_pct
 20000,2008.3830,1274.8289,official_mem0_same_evidence_adaptive_minus_official_mem0,1567.8525,target_tokens_per_correct
 20000,42.6360,28.5183,official_mem0_same_evidence_adaptive_minus_official_mem0,36.0509,tokens_per_correct_reduction_pct
+20000,0.3215,-4.1801,official_mem0_random_matched_top1_top3_minus_official_mem0,-1.9293,accuracy_delta_pct_points
+20000,3149.4375,1991.4211,official_mem0_random_matched_top1_top3_minus_official_mem0,2446.5000,base_tokens_per_correct
+20000,38.7480,35.5912,official_mem0_random_matched_top1_top3_minus_official_mem0,37.1557,reader_token_reduction_pct
+20000,2220.9767,1365.7606,official_mem0_random_matched_top1_top3_minus_official_mem0,1704.7455,target_tokens_per_correct
+20000,37.8717,21.0401,official_mem0_random_matched_top1_top3_minus_official_mem0,30.4595,tokens_per_correct_reduction_pct
 20000,-1.2862,-6.7524,official_mem0_top1_minus_official_mem0,-3.8585,accuracy_delta_pct_points
 20000,3149.4375,1991.4211,official_mem0_top1_minus_official_mem0,2446.5000,base_tokens_per_correct
 20000,56.8561,56.2804,official_mem0_top1_minus_official_mem0,56.5777,reader_token_reduction_pct

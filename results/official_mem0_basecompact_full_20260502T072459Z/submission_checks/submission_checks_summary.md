@@ -9,6 +9,7 @@ Sources: results/official_mem0_basecompact_full_20260502T072459Z
 | official_mem0 | 311 | 62 | 151558 | --- | 2444.48 | 40.91 |
 | official_mem0_odv2_selective | 311 | 58 | 86838 | -42.70 | 1497.21 | 66.79 |
 | official_mem0_same_evidence_adaptive | 311 | 61 | 95466 | -37.01 | 1565.02 | 63.90 |
+| official_mem0_random_matched_top1_top3 | 311 | 56 | 95230 | -37.17 | 1700.54 | 58.80 |
 | official_mem0_top1 | 311 | 50 | 65812 | -56.58 | 1316.24 | 75.97 |
 | official_mem0_top2 | 311 | 54 | 86002 | -43.25 | 1592.63 | 62.79 |
 | official_mem0_top3 | 311 | 60 | 110058 | -27.38 | 1834.30 | 54.52 |
@@ -28,6 +29,11 @@ Sources: results/official_mem0_basecompact_full_20260502T072459Z
 | reader_token_reduction_pct | 35.4819 | 36.9965 | 38.5655 |
 | target_tokens_per_correct | 1274.8289 | 1567.8525 | 2008.3830 |
 | tokens_per_correct_reduction_pct | 28.5183 | 36.0509 | 42.6360 |
+| accuracy_delta_pct_points | -4.1801 | -1.9293 | 0.3215 |
+| base_tokens_per_correct | 1991.4211 | 2446.5000 | 3149.4375 |
+| reader_token_reduction_pct | 35.5912 | 37.1557 | 38.7480 |
+| target_tokens_per_correct | 1365.7606 | 1704.7455 | 2220.9767 |
+| tokens_per_correct_reduction_pct | 21.0401 | 30.4595 | 37.8717 |
 | accuracy_delta_pct_points | -6.7524 | -3.8585 | -1.2862 |
 | base_tokens_per_correct | 1991.4211 | 2446.5000 | 3149.4375 |
 | reader_token_reduction_pct | 56.2804 | 56.5777 | 56.8561 |
@@ -64,4 +70,4 @@ If this count is tiny, claim token savings as ranked evidence compaction rather 
 - Token-savings claim: supported by paired reader-token totals.
 - Cost-normalized utility claim: supported by tokens per correct answer.
 - Accuracy-improvement claim: not supported unless additional validation changes the result.
-- Systems sanity claim: supported by `cache_free_reader_systems.csv`.
+- Latency sanity check: supported by `cache_free_reader_systems.csv`.

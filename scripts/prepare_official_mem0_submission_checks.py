@@ -32,6 +32,7 @@ def main() -> int:
         action="append",
         default=[
             "official_mem0_same_evidence_adaptive",
+            "official_mem0_random_matched_top1_top3",
             "official_mem0_top1",
             "official_mem0_top2",
             "official_mem0_top3",
@@ -167,7 +168,9 @@ def _efficiency_rows(
                 "delta_reader_tokens_vs_official_mem0_pct": "---" if policy == BASE_POLICY else f"{delta_pct:.2f}",
                 "tokens_per_correct": f"{tokens_per_correct:.2f}" if correct else "",
                 "correct_per_100k_reader_tokens": f"{(correct / total_tokens * 100000.0):.2f}" if total_tokens else "0.00",
-                "retrieved_context_tokens": sum(int(row.get("retrieved_context_tokens") or 0) for row in policy_rows),
+                "reader_visible_retrieved_context_tokens": sum(
+                    int(row.get("retrieved_context_tokens") or 0) for row in policy_rows
+                ),
                 "retrieved_items": sum(int(row.get("retrieved_items") or 0) for row in policy_rows),
             }
         )
@@ -347,9 +350,9 @@ def _write_summary(
 ) -> None:
     cache_free_path = path.parent / "cache_free_reader_systems.csv"
     systems_line = (
-        "- Systems sanity claim: supported by `cache_free_reader_systems.csv`."
+        "- Latency sanity check: supported by `cache_free_reader_systems.csv`."
         if cache_free_path.exists()
-        else "- Systems claim: still needs cache-free wall-clock benchmark output."
+        else "- Latency sanity check: still needs cache-free wall-clock benchmark output."
     )
     lines = [
         "# Official Mem0 Submission Checks",
