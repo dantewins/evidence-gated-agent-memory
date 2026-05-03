@@ -13,6 +13,12 @@ def main() -> int:
         description="Compare official_mem0 vs official_mem0_odv2_selective token spend."
     )
     parser.add_argument("paths", nargs="+", help="Result directories or *_cases.jsonl files.")
+    parser.add_argument(
+        "--extra-policy",
+        action="append",
+        default=["official_mem0_top2"],
+        help="Also compare this policy against official_mem0 when present.",
+    )
     args = parser.parse_args()
 
     rows = _load_rows([Path(path) for path in args.paths])
@@ -70,6 +76,9 @@ def main() -> int:
             f"  {category}: n={len(category_pairs)} prompt_delta={delta} "
             f"prompt_delta_pct={pct:.2f}% compact_rows={compact}"
         )
+
+    for policy_name in args.extra_policy:
+        _print_extra_policy_comparison(rows, policy_name)
     return 0
 
 
@@ -90,6 +99,13 @@ def _load_rows(paths: list[Path]) -> list[dict[str, Any]]:
 
 
 def _paired_rows(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    return _paired_rows_for(rows, "official_mem0_odv2_selective")
+
+
+def _paired_rows_for(
+    rows: list[dict[str, Any]],
+    comparison_policy: str,
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
     by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
     for row in rows:
         by_key[
@@ -104,7 +120,7 @@ def _paired_rows(rows: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict[
     for (category, case_id, policy_name), base in by_key.items():
         if policy_name != "official_mem0":
             continue
-        odv2 = by_key.get((category, case_id, "official_mem0_odv2_selective"))
+        odv2 = by_key.get((category, case_id, comparison_policy))
         if odv2 is not None:
             pairs.append((base, odv2))
     return pairs
@@ -122,6 +138,41 @@ def _print_metric(
     print(
         f"{label}: official_mem0={base_total} "
         f"official_mem0_odv2_selective={odv2_total} delta={delta} delta_pct={pct:.2f}%"
+    )
+
+
+def _print_extra_policy_comparison(rows: list[dict[str, Any]], policy_name: str) -> None:
+    pairs = _paired_rows_for(rows, policy_name)
+    if not pairs:
+        return
+    print(f"comparison={policy_name} paired_cases={len(pairs)}")
+    for label, getter in (
+        ("prompt_tokens", lambda row: int(row.get("prompt_tokens") or 0)),
+        (
+            "reader_total_tokens",
+            lambda row: int(row.get("prompt_tokens") or 0)
+            + int(row.get("completion_tokens") or 0),
+        ),
+        ("retrieved_context_tokens", lambda row: int(row.get("retrieved_context_tokens") or 0)),
+        ("retrieved_items", lambda row: int(row.get("retrieved_items") or 0)),
+    ):
+        base_total = sum(getter(base) for base, _ in pairs)
+        comparison_total = sum(getter(comparison) for _, comparison in pairs)
+        delta = comparison_total - base_total
+        pct = (delta / base_total * 100.0) if base_total else 0.0
+        print(
+            f"  {label}: official_mem0={base_total} {policy_name}={comparison_total} "
+            f"delta={delta} delta_pct={pct:.2f}%"
+        )
+    print(
+        f"  accuracy=official_mem0={_accuracy(base for base, _ in pairs):.3f} "
+        f"{policy_name}={_accuracy(comparison for _, comparison in pairs):.3f}"
+    )
+    print(
+        "  wins_losses="
+        f"wins={sum((not bool(base.get('correct'))) and bool(comparison.get('correct')) for base, comparison in pairs)} "
+        f"losses={sum(bool(base.get('correct')) and not bool(comparison.get('correct')) for base, comparison in pairs)} "
+        f"same_predictions={sum(base.get('prediction') == comparison.get('prediction') for base, comparison in pairs)}/{len(pairs)}"
     )
 
 
