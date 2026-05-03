@@ -9,8 +9,10 @@ accuracy as a guardrail?
 The headline result is not an accuracy improvement. It is a cost-quality
 operating point. On a 311-question LongMemEval subset, ODV2 compact reduces
 reader tokens by 42.7% relative to official open-source Mem0 top-5 retrieval,
-while accuracy changes from 62/311 to 58/311. In cost-normalized terms, reader
-tokens per correct answer drop from 2,444 to 1,497.
+while accuracy changes from 62/311 to 58/311. A secondary stale-aware gate
+routes revision/conflict-risk cases to top-3 evidence and otherwise uses compact
+ODV2; it matches official Mem0 at 62/311 while still reducing reader tokens by
+36.9%.
 
 ## Current Result
 
@@ -27,6 +29,7 @@ Main paired comparison:
 | `official_mem0` | 62/311 | 151,558 | baseline | 2,444 |
 | `official_mem0_odv2_selective` | 58/311 | 86,838 | -42.7% | 1,497 |
 | `official_mem0_top2` | 54/311 | 86,002 | -43.3% | 1,593 |
+| `official_mem0_staleaware_gate` | 62/311 | 95,685 | -36.9% | 1,543 |
 | `official_mem0_top3` | 60/311 | 110,058 | -27.4% | 1,834 |
 
 Additional checks produced for the paper:
@@ -37,11 +40,13 @@ Additional checks produced for the paper:
 - Cache-free 64-case reader replay: ODV2 compact takes 37.1 ms/case versus 56.5 ms/case for Mem0 top-5, with both at 9/64 correct on that subset.
 - Oracle answer-session sanity check: 27/64 correct when the reader receives only LongMemEval sessions marked as containing the answer.
 - Mechanism attribution: savings are dominated by ranked evidence compaction, with 907 Mem0 records omitted and only 2 stale records removed by the state guard.
+- Stale-aware route: 111 high-risk cases use top-3 evidence and 200 low-risk cases use compact ODV2, matching official Mem0's aggregate correct count with 36.9% fewer reader tokens.
 
 Interpretation:
 
 - Supported claim: evidence-gated compaction reduces reader-token spend under a fixed OSS Mem0 setup.
 - Supported claim: ODV2 compact is a lower-cost Pareto operating point among measured policies with at least 58 correct answers.
+- Supported claim: an oracle-free stale-risk route can recover the official Mem0 aggregate correct count in this replay while still reducing reader tokens.
 - Unsupported claim: ODV2 improves accuracy over full Mem0 top-5 retrieval.
 - Unsupported claim: this reproduces Mem0 platform benchmark accuracy.
 
@@ -62,6 +67,12 @@ The state guard is intentionally conservative. In the completed run, the guard
 fires rarely, so the result should be described as ranked evidence compaction
 with a state-aware guard, not as proof that validity reasoning drives the
 savings.
+
+The stale-aware route is a replay-composition ablation. It uses only retrieved
+Mem0 record text, not gold labels or predictions: if the first three retrieved
+records contain at least three revision markers or at least two distinct
+answer-like numeric/time/money/duration values, the case uses the top-3 reader
+replay; otherwise it uses compact ODV2.
 
 ## Benchmarks
 
@@ -137,9 +148,19 @@ Aggregate token savings and top-k comparisons:
 ```bash
 python scripts/analyze_official_mem0_token_savings.py \
   results/official_mem0_basecompact_full_20260502T072459Z \
+  --extra-policy official_mem0_staleaware_gate \
   --extra-policy official_mem0_top1 \
   --extra-policy official_mem0_top3 \
   --extra-policy official_mem0_top4
+```
+
+Compose the stale-aware gate from existing ODV2 and top-3 reader outputs:
+
+```bash
+python scripts/compose_official_mem0_staleaware_gate.py \
+  results/official_mem0_basecompact_full_20260502T072459Z \
+  --output results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_staleaware_gate_cases.jsonl \
+  --overwrite
 ```
 
 Replay naive top-k reader baselines from existing Mem0 records:
@@ -197,6 +218,7 @@ results/<run-id>/official_mem0_summary.csv
 results/<run-id>/official_mem0_audit.jsonl
 results/<run-id>/official_mem0_longmemeval_*_cases.jsonl
 results/<run-id>/official_mem0_top*_cases.jsonl
+results/<run-id>/official_mem0_staleaware_gate_cases.jsonl
 results/<run-id>/longmemeval_input.sha256
 results/<run-id>/logs/run.log
 results/<run-id>/logs/run.err
