@@ -345,6 +345,12 @@ def _write_summary(
     guard_rows: list[dict[str, Any]],
     source_paths: list[Path],
 ) -> None:
+    cache_free_path = path.parent / "cache_free_reader_systems.csv"
+    systems_line = (
+        "- Systems sanity claim: supported by `cache_free_reader_systems.csv`."
+        if cache_free_path.exists()
+        else "- Systems claim: still needs cache-free wall-clock benchmark output."
+    )
     lines = [
         "# Official Mem0 Submission Checks",
         "",
@@ -393,7 +399,7 @@ def _write_summary(
             "- Token-savings claim: supported by paired reader-token totals.",
             "- Cost-normalized utility claim: supported by tokens per correct answer.",
             "- Accuracy-improvement claim: not supported unless additional validation changes the result.",
-            "- Systems claim: still needs cache-free wall-clock benchmark output.",
+            systems_line,
         ]
     )
     path.write_text("\n".join(lines) + "\n")

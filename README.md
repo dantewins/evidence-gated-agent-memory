@@ -37,7 +37,7 @@ Additional checks produced for the paper:
 - Bootstrap CI for same-evidence adaptive reader-token reduction: 35.5% to 38.5%.
 - Bootstrap CI for same-evidence adaptive tokens-per-correct reduction: 28.5% to 42.7%.
 - Reviewed 50-case manual audit: automatic/manual agreement is 91/100 policy-case decisions; reviewed counts are 14/50 for official Mem0 and 11/50 for ODV2 compact.
-- Cache-free 64-case reader replay: ODV2 compact takes 37.1 ms/case versus 56.5 ms/case for Mem0 top-5, with both at 9/64 correct on that subset.
+- Cache-free 64-case reader replay: same-evidence adaptive takes 37.2 ms/case and answers 10/64 versus 62.6 ms/case and 9/64 for Mem0 top-5; fixed top-1/top-2/top-3 take 26.2/33.4/39.6 ms/case.
 - Oracle answer-session sanity check: 27/64 correct when the reader receives only LongMemEval sessions marked as containing the answer.
 - Evidence-overlap audit: ODV2 compact is secondary because 63/311 ODV2 rows include at least one record outside the corresponding official Mem0 top-5.
 
@@ -203,6 +203,9 @@ PYTHONPATH=src python scripts/benchmark_official_mem0_reader_cache_free.py \
   --inference-batch-size 16
 ```
 
+By default, this replays official Mem0 top-5, the same-evidence adaptive row,
+and fixed Mem0 top-1/top-2/top-3 rows.
+
 Run oracle answer-session sanity replay:
 
 ```bash
@@ -240,6 +243,7 @@ results/<run-id>/submission_checks/manual_audit_sample_reviewed.csv
 results/<run-id>/submission_checks/manual_audit_summary.csv
 results/<run-id>/submission_checks/state_guard_isolation.csv
 results/<run-id>/submission_checks/cache_free_reader_systems.csv
+results/<run-id>/submission_checks/official_mem0_same_evidence_adaptive_cache_free_traces.jsonl
 results/<run-id>/submission_checks/oracle_answer_context_summary.csv
 ```
 

@@ -1,5 +1,6 @@
 accuracy,cache_dir,cases,context_window,correct,examples_per_second,inference_batch_size,input_row_reader_tokens,mean_wall_ms_per_case,peak_allocated_memory_mib,policy_name,tokens_per_second,trace_completion_tokens,trace_prompt_tokens,trace_total_tokens,wall_ms
-0.140625,disabled,64,8192,9,17.7079,16,31476,56.47,16179.3,official_mem0,8824.09,2048,29844,31892,3614.20
-0.140625,disabled,64,8192,9,26.9525,16,17796,37.10,15440.1,official_mem0_odv2_selective,7638.92,1952,16187,18139,2374.55
-0.140625,disabled,64,8192,9,29.5269,16,17888,33.87,15440.1,official_mem0_top2,8275.37,1744,16193,17937,2167.52
-0.140625,disabled,64,8192,9,25.0777,16,22753,39.88,15686.1,official_mem0_top3,8865.36,1920,20705,22625,2552.07
+0.140625,disabled,64,8192,9,15.9780,16,31476,62.59,16179.3,official_mem0,7962.05,2048,29844,31892,4005.50
+0.156250,disabled,64,8192,10,26.9106,16,19908,37.16,15686.1,official_mem0_same_evidence_adaptive,8307.39,1872,17885,19757,2378.25
+0.156250,disabled,64,8192,10,38.1455,16,13584,26.22,15219.0,official_mem0_top1,7805.53,1488,11608,13096,1677.78
+0.140625,disabled,64,8192,9,29.9225,16,17888,33.42,15440.1,official_mem0_top2,8386.26,1744,16193,17937,2138.86
+0.140625,disabled,64,8192,9,25.2690,16,22753,39.57,15686.1,official_mem0_top3,8932.97,1920,20705,22625,2532.75

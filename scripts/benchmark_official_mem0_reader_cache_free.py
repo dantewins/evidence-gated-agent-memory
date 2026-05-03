@@ -24,7 +24,8 @@ from memory_inference.llm.local_hf_reasoner import LocalHFReasoner
 
 DEFAULT_POLICIES = [
     "official_mem0",
-    "official_mem0_odv2_selective",
+    "official_mem0_same_evidence_adaptive",
+    "official_mem0_top1",
     "official_mem0_top2",
     "official_mem0_top3",
 ]

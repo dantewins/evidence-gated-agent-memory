@@ -64,4 +64,4 @@ If this count is tiny, claim token savings as ranked evidence compaction rather 
 - Token-savings claim: supported by paired reader-token totals.
 - Cost-normalized utility claim: supported by tokens per correct answer.
 - Accuracy-improvement claim: not supported unless additional validation changes the result.
-- Systems claim: still needs cache-free wall-clock benchmark output.
+- Systems sanity claim: supported by `cache_free_reader_systems.csv`.
