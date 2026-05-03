@@ -179,7 +179,7 @@ Stale records removed by ODV2 guard & 2 \\
 \end{table}
 
 \paragraph{Accuracy guardrail.}
-Across the 311 paired cases, official Mem0 OSS top-5 answers 62 cases correctly, while the same-evidence adaptive gate answers 61 correctly. The paired accuracy difference is therefore one case, or $-0.3$ percentage points. There are 5 paired wins for the adaptive gate and 6 paired losses; 56 cases are correct for both methods and 244 are wrong for both. The category-level pattern is also close: knowledge-update and multi-session are tied with the top-5 baseline, single-session-preference gains one case, and single-session-user loses two cases.
+Across the 311 paired cases, the automatic span scorer marks official Mem0 OSS top-5 correct on 62 cases and the same-evidence adaptive gate correct on 61 cases. The paired automatic difference is therefore one case, or $-0.3$ percentage points. There are 5 automatic paired wins for the adaptive gate and 6 automatic paired losses; 56 cases are correct for both methods and 244 are wrong for both. Because this one-case difference is sensitive to scorer boundary cases, we author-audited all 11 automatic disagreements and a deterministic 20-case agreement sample. The disagreement audit labels 5 cases correct for top-5 and 5 for adaptive, and the full 31-case worksheet labels both policies correct on 17 cases. The audit does not support an accuracy improvement claim, but it supports treating the automatic one-case difference as a guardrail rather than a substantive accuracy loss.
 
 \paragraph{Reader-budget reduction.}
 The token-savings signal is the central result. The adaptive gate reduces prompt tokens by 40.43\%, total reader tokens by 37.01\%, retrieved context tokens by 53.32\%, and retrieved items by 53.35\%. This is a clean same-evidence result: all reader inputs are prefixes of the exact Mem0 top-5 records used by the baseline. The ODV2 compact row remains useful as a secondary operating point, reducing reader tokens by 42.70\%, but it is not the main causal evidence because 63/311 ODV2 rows contain at least one record outside the corresponding official Mem0 top-5.
@@ -189,8 +189,8 @@ Because the goal is token savings under an accuracy guardrail, the most direct u
 
 A paired bootstrap over 20{,}000 case resamples gives a 95\% interval of 35.5--38.5\% for the adaptive reader-token reduction and 28.5--42.7\% for tokens-per-correct reduction. The same bootstrap gives an accuracy-delta interval of $-2.57$ to $+1.61$ percentage points. We do not claim statistical non-inferiority for any budgeted row. The same-evidence adaptive result should be read as an accuracy-guarded operating point, not as an accuracy improvement.
 
-\paragraph{Scorer sanity check.}
-We retain the 50-case manual audit from the original ODV2 comparison only as a scorer sanity check, not as evidence for the headline adaptive policy. Manual review agrees with the automatic span scorer on 91/100 decisions across official Mem0 and ODV2 compact. The audit supports using the local span scorer as a rough guardrail, but the adaptive result should be judged from paired automatic counts and the bootstrap interval above.
+\paragraph{Scorer sanity checks.}
+The adaptive guardrail audit is the scorer check for the headline comparison. We also retain the earlier 50-case audit from the original ODV2 comparison only as secondary scorer context, not as evidence for the headline adaptive policy. That audit agrees with the automatic span scorer on 91/100 decisions across official Mem0 and ODV2 compact. Together, these checks support using the local span scorer as a rough guardrail, while preserving the paper's narrower claim: token savings under observed paired answer behavior, not statistically certified non-inferiority.
 
 \begin{table}[t]
 \caption{Sensitivity of the same-evidence adaptive rule. The default route uses candidate-$k=4$, revision threshold 1, and distinct-value threshold 2. All rows select only between official Mem0 top-1 and top-3 reader replays.}
@@ -297,11 +297,11 @@ LLM-based coding and writing tools were used to assist with implementation and r
 
 \section*{Artifact Status}
 
-The submitted repository includes the official Mem0 package runner, top-$k$ replay, same-evidence adaptive composition, token analysis, submission-check generation, cache-free reader benchmarking, oracle answer-context replay, and per-case JSONL diagnostics. The active run directory is \path{results/official_mem0_basecompact_full_20260502T072459Z}. It contains the top-$k$ replay rows, adaptive rows, cleaned-input checksum, command logs, vLLM/server diagnostics, and GPU snapshots. Submission-check outputs include the reviewed 50-case manual audit, oracle answer-context rows, and cache-free reader-system traces.
+The submitted repository includes the official Mem0 package runner, top-$k$ replay, same-evidence adaptive composition, token analysis, submission-check generation, cache-free reader benchmarking, oracle answer-context replay, and per-case JSONL diagnostics. The active run directory is \path{results/official_mem0_basecompact_full_20260502T072459Z}. It contains the top-$k$ replay rows, adaptive rows, cleaned-input checksum, command logs, vLLM/server diagnostics, and GPU snapshots. Submission-check outputs include the adaptive guardrail audit, reviewed 50-case scorer audit, oracle answer-context rows, and cache-free reader traces.
 
 \section*{Reproducibility Commands}
 
-The adaptive rows are regenerated with \path{scripts/compose_official_mem0_same_evidence_adaptive.py}; the route uses candidate-$k=4$, revision-signal threshold 1, and distinct-value threshold 2. The paper tables are regenerated from per-case JSONL outputs using the repository scripts named above. The completed run stores command logs, diagnostics, top-$k$ replays, bootstrap summaries, manual-audit sample, cache-free reader benchmark, and oracle answer-context replay under the active result directory.
+The adaptive rows are regenerated with \path{scripts/compose_official_mem0_same_evidence_adaptive.py}; the route uses candidate-$k=4$, revision-signal threshold 1, and distinct-value threshold 2. The paper tables are regenerated from per-case JSONL outputs using the repository scripts named above. The completed run stores command logs, diagnostics, top-$k$ replays, bootstrap summaries, adaptive guardrail audit, manual-audit sample, cache-free reader benchmark, and oracle answer-context replay under the active result directory.
 
 \FloatBarrier
 \bibliographystyle{icml2026}

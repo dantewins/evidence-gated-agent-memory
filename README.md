@@ -33,7 +33,8 @@ Main paired comparison:
 
 Additional checks produced for the paper:
 
-- Same-evidence adaptive route: 105 cases use top-1 evidence and 206 use top-3 evidence; wins/losses versus top-5 are 5/6.
+- Same-evidence adaptive route: 105 cases use top-1 evidence and 206 use top-3 evidence; automatic wins/losses versus top-5 are 5/6.
+- Author-confirmed adaptive guardrail audit: all 11 automatic top-5/adaptive disagreements are tied at 5/5, and the 31-case worksheet is tied at 17/17.
 - Bootstrap CI for same-evidence adaptive reader-token reduction: 35.5% to 38.5%.
 - Bootstrap CI for same-evidence adaptive tokens-per-correct reduction: 28.5% to 42.7%.
 - Reviewed 50-case manual audit: automatic/manual agreement is 91/100 policy-case decisions; reviewed counts are 14/50 for official Mem0 and 11/50 for ODV2 compact.
@@ -238,6 +239,8 @@ Submission-check outputs:
 ```text
 results/<run-id>/submission_checks/policy_efficiency.csv
 results/<run-id>/submission_checks/paired_bootstrap_summary.csv
+results/<run-id>/submission_checks/adaptive_guardrail_review.csv
+results/<run-id>/submission_checks/adaptive_guardrail_review_summary.md
 results/<run-id>/submission_checks/manual_audit_sample.csv
 results/<run-id>/submission_checks/manual_audit_sample_reviewed.csv
 results/<run-id>/submission_checks/manual_audit_summary.csv
@@ -258,7 +261,18 @@ Use the current result as a token-saving memory-budget paper:
 - Keep ODV2/stale-aware rows as secondary diagnostics.
 - Do not compare the low absolute accuracy to Mem0 platform results.
 
-The reviewed manual audit is saved at:
+The adaptive guardrail audit for the headline comparison is saved at:
+
+```text
+results/<run-id>/submission_checks/adaptive_guardrail_review.csv
+```
+
+It covers all 11 automatic disagreement cases between official Mem0 top-5 and
+the same-evidence adaptive policy, plus a deterministic 20-case agreement
+sample. Author-confirmed audit labels the 11 disagreement cases as tied at 5/5
+and the 31-case worksheet as tied at 17/17.
+
+The older reviewed manual audit is saved at:
 
 ```text
 results/<run-id>/submission_checks/manual_audit_sample_reviewed.csv
