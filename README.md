@@ -33,6 +33,7 @@ Additional checks produced for the paper:
 
 - Bootstrap CI for reader-token reduction: 41.9% to 43.4%.
 - Bootstrap CI for tokens-per-correct reduction: 28.6% to 47.1%.
+- Reviewed 50-case manual audit: automatic/manual agreement is 91/100 policy-case decisions; reviewed counts are 14/50 for official Mem0 and 11/50 for ODV2 compact.
 - Cache-free 64-case reader replay: ODV2 compact takes 37.1 ms/case versus 56.5 ms/case for Mem0 top-5, with both at 9/64 correct on that subset.
 - Oracle answer-session sanity check: 27/64 correct when the reader receives only LongMemEval sessions marked as containing the answer.
 - Mechanism attribution: savings are dominated by ranked evidence compaction, with 907 Mem0 records omitted and only 2 stale records removed by the state guard.
@@ -208,6 +209,8 @@ Submission-check outputs:
 results/<run-id>/submission_checks/policy_efficiency.csv
 results/<run-id>/submission_checks/paired_bootstrap_summary.csv
 results/<run-id>/submission_checks/manual_audit_sample.csv
+results/<run-id>/submission_checks/manual_audit_sample_reviewed.csv
+results/<run-id>/submission_checks/manual_audit_summary.csv
 results/<run-id>/submission_checks/state_guard_isolation.csv
 results/<run-id>/submission_checks/cache_free_reader_systems.csv
 results/<run-id>/submission_checks/oracle_answer_context_summary.csv
@@ -223,13 +226,16 @@ Use the current result as a token-saving systems/work-in-progress paper:
 - Say explicitly that the mechanism is mostly compaction, not frequent stale-state deletion.
 - Do not compare the low absolute accuracy to Mem0 platform results.
 
-The most useful remaining validation is a manual audit of:
+The reviewed manual audit is saved at:
 
 ```text
-results/<run-id>/submission_checks/manual_audit_sample.csv
+results/<run-id>/submission_checks/manual_audit_sample_reviewed.csv
 ```
 
 That audit checks whether the local span-match scorer undercounts correctness.
+On the reviewed 50-case sample, manual review marks official Mem0 correct on
+14/50 cases and ODV2 compact correct on 11/50 cases, while the automatic scorer
+marks 13/50 and 9/50 respectively.
 
 ## Tests
 

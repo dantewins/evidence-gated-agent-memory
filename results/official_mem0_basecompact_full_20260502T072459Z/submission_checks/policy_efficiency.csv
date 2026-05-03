@@ -1,0 +1,7 @@
+accuracy,correct,correct_per_100k_reader_tokens,delta_reader_tokens_vs_official_mem0_pct,paired_with_official_mem0,policy_name,reader_total_tokens,retrieved_context_tokens,retrieved_items,rows,tokens_per_correct
+0.199357,62,40.91,---,311,official_mem0,151558,34079,1550,311,2444.48
+0.186495,58,66.79,-42.70,311,official_mem0_odv2_selective,86838,13949,641,311,1497.21
+0.160772,50,75.97,-56.58,311,official_mem0_top1,65812,6722,311,311,1316.24
+0.173633,54,62.79,-43.25,311,official_mem0_top2,86002,13684,621,311,1592.63
+0.192926,60,54.52,-27.38,311,official_mem0_top3,110058,20452,931,311,1834.30
+0.189711,59,45.33,-14.12,311,official_mem0_top4,130157,27280,1241,311,2206.05

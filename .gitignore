@@ -8,3 +8,10 @@ headroom_memory.db
 docs/
 AGENTS.md
 paper/
+brev_results_fetch/
+manual_audit_sample_llm_assisted.csv
+validity_aware_memory.zip
+overleaf_paper/*.log
+overleaf_paper/*.blg
+overleaf_paper/scale_icml2026_harsh_review*.md
+overleaf_paper/validity_aware_memory_fmai2026.tex

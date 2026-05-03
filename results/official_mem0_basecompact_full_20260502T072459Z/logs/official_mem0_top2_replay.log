@@ -1,0 +1,18 @@
+nohup: ignoring input
+official_mem0_top2 starting: knowledge-update
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 2/4 [00:00<00:00, 11.72it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 11.79it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 11.77it/s]
+wrote results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_longmemeval_knowledge-update_top2_cases.jsonl rows=78 policy=official_mem0_top2 top_k=2 accuracy=23/78
+official_mem0_top2 finished: knowledge-update
+official_mem0_top2 starting: single-session-preference
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 2/4 [00:00<00:00, 10.24it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 10.40it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 10.37it/s]
+wrote results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_longmemeval_single-session-preference_top2_cases.jsonl rows=30 policy=official_mem0_top2 top_k=2 accuracy=0/30
+official_mem0_top2 finished: single-session-preference
+official_mem0_top2 starting: multi-session
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 2/4 [00:00<00:00, 10.90it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 11.08it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 11.05it/s]
+wrote results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_longmemeval_multi-session_top2_cases.jsonl rows=133 policy=official_mem0_top2 top_k=2 accuracy=4/133
+official_mem0_top2 finished: multi-session
+official_mem0_top2 starting: single-session-user
+Loading checkpoint shards:   0%|          | 0/4 [00:00<?, ?it/s]Loading checkpoint shards:  50%|█████     | 2/4 [00:00<00:00, 10.40it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 10.72it/s]Loading checkpoint shards: 100%|██████████| 4/4 [00:00<00:00, 10.67it/s]
+wrote results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_longmemeval_single-session-user_top2_cases.jsonl rows=70 policy=official_mem0_top2 top_k=2 accuracy=27/70
+official_mem0_top2 finished: single-session-user
+wrote results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_top2_comparison.txt

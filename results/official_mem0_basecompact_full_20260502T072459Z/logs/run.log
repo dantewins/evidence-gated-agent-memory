@@ -1,0 +1,27 @@
+runner starting
+Run ID: official_mem0_basecompact_full_20260502T072459Z
+Writing official Mem0 outputs to results/official_mem0_basecompact_full_20260502T072459Z
+Writing logs to results/official_mem0_basecompact_full_20260502T072459Z/logs
+Writing diagnostics to results/official_mem0_basecompact_full_20260502T072459Z/diagnostics
+official_mem0 vLLM budget ok: estimated_request_tokens=10512 max_model_len=16384 batch_size=16 max_message_chars=2000 max_tokens=512
+official_mem0 smoke ok: records=1 stored=1 mode=infer
+slice starting: knowledge-update
+official_mem0: accuracy=0.321 exact_accuracy=0.218 retrieval_hit=0.359 stale_exposure=0.000 context_tokens=459.00 memory_tokens=109.15 latency_ms=65.35
+official_mem0_odv2_selective: accuracy=0.295 exact_accuracy=0.218 retrieval_hit=0.308 stale_exposure=0.000 context_tokens=252.44 memory_tokens=44.53 latency_ms=47.84
+slice finished: knowledge-update
+slice starting: single-session-preference
+official_mem0: accuracy=0.000 exact_accuracy=0.000 retrieval_hit=0.000 stale_exposure=0.000 context_tokens=467.17 memory_tokens=112.70 latency_ms=85.04
+official_mem0_odv2_selective: accuracy=0.000 exact_accuracy=0.000 retrieval_hit=0.000 stale_exposure=0.000 context_tokens=252.27 memory_tokens=43.93 latency_ms=71.28
+slice finished: single-session-preference
+slice starting: multi-session
+official_mem0: accuracy=0.053 exact_accuracy=0.038 retrieval_hit=0.038 stale_exposure=0.000 context_tokens=468.49 memory_tokens=111.12 latency_ms=58.79
+official_mem0_odv2_selective: accuracy=0.053 exact_accuracy=0.045 retrieval_hit=0.023 stale_exposure=0.000 context_tokens=259.30 memory_tokens=45.14 latency_ms=50.44
+slice finished: multi-session
+slice starting: single-session-user
+official_mem0: accuracy=0.429 exact_accuracy=0.214 retrieval_hit=0.414 stale_exposure=0.000 context_tokens=450.89 memory_tokens=105.79 latency_ms=64.75
+official_mem0_odv2_selective: accuracy=0.400 exact_accuracy=0.243 retrieval_hit=0.400 stale_exposure=0.000 context_tokens=253.11 memory_tokens=45.06 latency_ms=57.10
+slice finished: single-session-user
+Wrote results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_summary.csv
+Wrote results/official_mem0_basecompact_full_20260502T072459Z/official_mem0_audit.jsonl
+Wrote results/official_mem0_basecompact_full_20260502T072459Z/longmemeval_input.sha256
+runner finished

@@ -1,0 +1,6 @@
+accuracy,cases,category,correct,tokens_per_correct,total_tokens,wall_ms_total_run
+0.421875,64,all,27,2006.37,54172,16767.16
+0.461538,13,knowledge-update,6,2697.50,16185,
+0.290323,31,multi-session,9,3355.33,30198,
+0.250000,8,single-session-preference,2,1006.00,2012,
+0.833333,12,single-session-user,10,577.70,5777,

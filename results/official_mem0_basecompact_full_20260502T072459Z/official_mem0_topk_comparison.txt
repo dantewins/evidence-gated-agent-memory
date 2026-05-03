@@ -1,0 +1,46 @@
+rows=1866 paired_cases=311
+prompt_tokens: official_mem0=143688 official_mem0_odv2_selective=79463 delta=-64225 delta_pct=-44.70%
+completion_tokens: official_mem0=7870 official_mem0_odv2_selective=7375 delta=-495 delta_pct=-6.29%
+reader_total_tokens: official_mem0=151558 official_mem0_odv2_selective=86838 delta=-64720 delta_pct=-42.70%
+retrieved_context_tokens: official_mem0=34079 official_mem0_odv2_selective=13949 delta=-20130 delta_pct=-59.07%
+retrieved_items: official_mem0=1550 official_mem0_odv2_selective=641 delta=-909 delta_pct=-58.65%
+compact_rows=303
+guard_rows=0
+validity_removed=2
+validity_appended=0
+support_compacted=907
+same_predictions=157/311
+accuracy=official_mem0=0.199 official_mem0_odv2_selective=0.186
+by_category
+  knowledge-update: n=78 prompt_delta=-16112 prompt_delta_pct=-45.00% compact_rows=77
+  multi-session: n=133 prompt_delta=-27822 prompt_delta_pct=-44.65% compact_rows=130
+  single-session-preference: n=30 prompt_delta=-6447 prompt_delta_pct=-46.00% compact_rows=30
+  single-session-user: n=70 prompt_delta=-13844 prompt_delta_pct=-43.86% compact_rows=66
+comparison=official_mem0_top2 paired_cases=311
+  prompt_tokens: official_mem0=143688 official_mem0_top2=78262 delta=-65426 delta_pct=-45.53%
+  reader_total_tokens: official_mem0=151558 official_mem0_top2=86002 delta=-65556 delta_pct=-43.25%
+  retrieved_context_tokens: official_mem0=34079 official_mem0_top2=13684 delta=-20395 delta_pct=-59.85%
+  retrieved_items: official_mem0=1550 official_mem0_top2=621 delta=-929 delta_pct=-59.94%
+  accuracy=official_mem0=0.199 official_mem0_top2=0.174
+  wins_losses=wins=3 losses=11 same_predictions=171/311
+comparison=official_mem0_top1 paired_cases=311
+  prompt_tokens: official_mem0=143688 official_mem0_top1=56180 delta=-87508 delta_pct=-60.90%
+  reader_total_tokens: official_mem0=151558 official_mem0_top1=65812 delta=-85746 delta_pct=-56.58%
+  retrieved_context_tokens: official_mem0=34079 official_mem0_top1=6722 delta=-27357 delta_pct=-80.28%
+  retrieved_items: official_mem0=1550 official_mem0_top1=311 delta=-1239 delta_pct=-79.94%
+  accuracy=official_mem0=0.199 official_mem0_top1=0.161
+  wins_losses=wins=3 losses=15 same_predictions=132/311
+comparison=official_mem0_top3 paired_cases=311
+  prompt_tokens: official_mem0=143688 official_mem0_top3=100106 delta=-43582 delta_pct=-30.33%
+  reader_total_tokens: official_mem0=151558 official_mem0_top3=110058 delta=-41500 delta_pct=-27.38%
+  retrieved_context_tokens: official_mem0=34079 official_mem0_top3=20452 delta=-13627 delta_pct=-39.99%
+  retrieved_items: official_mem0=1550 official_mem0_top3=931 delta=-619 delta_pct=-39.94%
+  accuracy=official_mem0=0.199 official_mem0_top3=0.193
+  wins_losses=wins=3 losses=5 same_predictions=212/311
+comparison=official_mem0_top4 paired_cases=311
+  prompt_tokens: official_mem0=143688 official_mem0_top4=121997 delta=-21691 delta_pct=-15.10%
+  reader_total_tokens: official_mem0=151558 official_mem0_top4=130157 delta=-21401 delta_pct=-14.12%
+  retrieved_context_tokens: official_mem0=34079 official_mem0_top4=27280 delta=-6799 delta_pct=-19.95%
+  retrieved_items: official_mem0=1550 official_mem0_top4=1241 delta=-309 delta_pct=-19.94%
+  accuracy=official_mem0=0.199 official_mem0_top4=0.190
+  wins_losses=wins=2 losses=5 same_predictions=228/311
