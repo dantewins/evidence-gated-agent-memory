@@ -2,7 +2,7 @@
 
 This repository contains the code and diagnostics for a token-efficiency study of
 reader-budget gating for frozen LLM agents. The current paper asks a narrow
-systems question: can we reduce the reader context passed by an open-source
+token-budget question: can we reduce the reader context passed by an open-source
 Mem0 pipeline while using the exact same retrieved evidence and treating
 accuracy as a guardrail?
 
@@ -193,7 +193,7 @@ python scripts/prepare_official_mem0_submission_checks.py \
   --output-dir results/official_mem0_basecompact_full_20260502T072459Z/submission_checks
 ```
 
-Run cache-free reader systems replay:
+Run cache-free reader latency sanity replay:
 
 ```bash
 PYTHONPATH=src python scripts/benchmark_official_mem0_reader_cache_free.py \
@@ -249,7 +249,7 @@ results/<run-id>/submission_checks/oracle_answer_context_summary.csv
 
 ## What To Report
 
-Use the current result as a token-saving systems/work-in-progress paper:
+Use the current result as a token-saving memory-budget paper:
 
 - Report reader-token reduction, retrieved-context reduction, and tokens per correct answer.
 - Treat accuracy as a guardrail.
