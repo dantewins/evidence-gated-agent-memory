@@ -36,8 +36,9 @@ Main paired comparison:
 Additional checks produced for the paper:
 
 - Same-evidence adaptive route: 105 cases use top-1 evidence and 206 use top-3 evidence; automatic wins/losses versus top-5 are 5/6.
+- Among the 62 cases solved by official Mem0 top-5, the same-evidence adaptive gate preserves 56, or 90.3%, while using 37.0% fewer reader tokens.
 - Author-confirmed adaptive guardrail audit: all 11 automatic top-5/adaptive disagreements are tied at 5/5, and the 31-case worksheet is tied at 17/17. This audit is limited and not blinded.
-- Matched-budget random top1/top3 control: seed 20260503 answers 56/311 at 95,230 reader tokens; across 10,000 random matched routes, the correct-count median is 57 and the 95% interval is 53 to 60.
+- Matched-budget random top1/top3 control: seed 20260503 answers 56/311 at 95,230 reader tokens; across 10,000 random matched routes, the correct-count median is 57 and the 95% interval is 53 to 60. The percentile comparison is exploratory, not a pre-registered hypothesis test.
 - Bootstrap CI for same-evidence adaptive reader-token reduction: 35.5% to 38.5%.
 - Bootstrap CI for same-evidence adaptive tokens-per-correct reduction: 28.5% to 42.7%.
 - Author-reviewed 50-case ODV2 scorer audit: automatic/manual agreement is 91/100 policy-case decisions; reviewed counts are 14/50 for official Mem0 and 11/50 for ODV2 compact. This older audit is secondary, limited, and not blinded.
@@ -156,9 +157,10 @@ JSONL so interrupted runs leave usable partial files. The run directory contains
 logs, environment snapshots, git state, GPU diagnostics, and a failure report if
 the script exits nonzero.
 
-Raw Mem0 fallback is disabled for official package runs. If Mem0 stores no
-searchable memories or only succeeds by falling back to raw `infer=False`
-storage, the smoke test fails rather than producing an invalid result.
+Raw Mem0 fallback is blocked as a valid outcome for official package runs. If
+inferred Mem0 addition stores zero memories and would fall back to raw
+`infer=False` storage, the smoke test or runner fails rather than producing an
+invalid result.
 
 ## Analyze Results
 
